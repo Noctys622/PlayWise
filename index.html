@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PlayWise — Éditeur</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #080b10;
+  --surface: #0e1420;
+  --surface2: #131927;
+  --border: rgba(255,255,255,0.07);
+  --accent: #00f5a0;
+  --accent2: #f5a000;
+  --accent3: #00a8f5;
+  --text: #e8edf5;
+  --muted: #6b7a96;
+  --danger: #f55050;
+  --panel: #0a0d14;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;display:flex;flex-direction:column;}
+
+/* ===== TOP BAR ===== */
+#topbar{
+  height:52px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 1.2rem;background:var(--panel);border-bottom:1px solid var(--border);
+  flex-shrink:0;z-index:200;gap:1rem;
+}
+.topbar-logo{font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:3px;color:var(--text);}
+.topbar-logo span{color:var(--accent);}
+.topbar-pages{display:flex;gap:4px;align-items:center;}
+.page-tab{
+  padding:5px 14px;border-radius:5px;font-size:0.76rem;font-weight:600;
+  letter-spacing:.5px;border:1px solid transparent;cursor:pointer;
+  color:var(--muted);background:transparent;transition:all .18s;white-space:nowrap;
+  display:flex;align-items:center;gap:6px;
+}
+.page-tab:hover{color:var(--text);background:var(--surface);}
+.page-tab.active{color:var(--accent);background:rgba(0,245,160,.08);border-color:rgba(0,245,160,.2);}
+.page-tab .del-page{
+  width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:10px;color:var(--muted);transition:all .15s;background:transparent;border:none;cursor:pointer;
+}
+.page-tab .del-page:hover{background:var(--danger);color:#fff;}
+#addPageBtn{
+  padding:5px 12px;border-radius:5px;font-size:0.76rem;font-weight:700;
+  border:1px dashed rgba(0,245,160,.3);color:var(--accent);background:transparent;
+  cursor:pointer;transition:all .18s;white-space:nowrap;
+}
+#addPageBtn:hover{background:rgba(0,245,160,.08);}
+.topbar-actions{display:flex;gap:8px;align-items:center;margin-left:auto;}
+.tb-btn{
+  padding:6px 14px;border-radius:5px;font-size:0.75rem;font-weight:700;
+  letter-spacing:.5px;border:1px solid var(--border);color:var(--muted);
+  background:transparent;cursor:pointer;transition:all .18s;
+}
+.tb-btn:hover{color:var(--text);border-color:rgba(255,255,255,.2);}
+.tb-btn.primary{background:var(--accent);color:#000;border-color:var(--accent);}
+.tb-btn.primary:hover{opacity:.85;}
+.mode-toggle{display:flex;background:var(--surface);border-radius:6px;border:1px solid var(--border);overflow:hidden;}
+.mode-btn{padding:5px 12px;font-size:.72rem;font-weight:700;letter-spacing:.5px;text-transform:uppercase;border:none;cursor:pointer;color:var(--muted);background:transparent;transition:all .18s;}
+.mode-btn.active{background:var(--accent);color:#000;}
+
+/* ===== LAYOUT ===== */
+#workspace{display:flex;flex:1;overflow:hidden;}
+
+/* ===== SIDEBAR LEFT — BLOCKS ===== */
+#sidebar{
+  width:220px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.sb-section{padding:.75rem;border-bottom:1px solid var(--border);}
+.sb-title{font-size:.65rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:.5rem;}
+.block-list{display:flex;flex-direction:column;gap:4px;}
+.block-item{
+  padding:8px 10px;border-radius:6px;font-size:.78rem;font-weight:600;
+  border:1px solid var(--border);color:var(--text);background:var(--surface);
+  cursor:grab;display:flex;align-items:center;gap:8px;transition:all .15s;user-select:none;
+}
+.block-item:hover{border-color:rgba(0,245,160,.3);color:var(--accent);}
+.block-item .bi-icon{font-size:1rem;}
+
+/* ===== CANVAS ===== */
+#canvas-wrap{
+  flex:1;overflow:auto;background:repeating-linear-gradient(
+    0deg,transparent,transparent 39px,rgba(255,255,255,.03) 39px,rgba(255,255,255,.03) 40px),
+    repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(255,255,255,.03) 39px,rgba(255,255,255,.03) 40px);
+  display:flex;justify-content:center;padding:2rem;
+}
+#canvas{
+  width:960px;min-height:600px;background:var(--bg);border:1px solid var(--border);
+  border-radius:8px;overflow:hidden;position:relative;
+}
+#canvas.preview-mode .block-wrapper:hover .block-actions{display:none;}
+#canvas.preview-mode .block-wrapper{cursor:default;}
+#canvas.preview-mode .block-wrapper.selected{outline:none;}
+
+/* Drag over */
+#canvas.dragover{border-color:var(--accent);box-shadow:0 0 0 2px rgba(0,245,160,.2);}
+.drop-indicator{
+  height:4px;background:var(--accent);border-radius:2px;margin:2px 8px;
+  display:none;transition:all .15s;
+}
+.drop-indicator.visible{display:block;}
+
+/* ===== BLOCK WRAPPER ===== */
+.block-wrapper{position:relative;cursor:pointer;}
+.block-wrapper:hover{outline:2px solid rgba(0,245,160,.3);}
+.block-wrapper.selected{outline:2px solid var(--accent);}
+.block-actions{
+  position:absolute;top:6px;right:6px;display:flex;gap:4px;z-index:50;
+  opacity:0;transition:opacity .15s;
+}
+.block-wrapper:hover .block-actions,.block-wrapper.selected .block-actions{opacity:1;}
+.ba-btn{
+  width:26px;height:26px;border-radius:4px;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:.75rem;
+  background:rgba(8,11,16,.9);color:var(--text);backdrop-filter:blur(8px);
+  transition:all .15s;border:1px solid var(--border);
+}
+.ba-btn:hover{background:var(--accent);color:#000;}
+.ba-btn.danger:hover{background:var(--danger);}
+.drag-handle{cursor:grab;}
+.drag-handle:active{cursor:grabbing;}
+
+/* ===== PANEL RIGHT ===== */
+#propanel{
+  width:260px;flex-shrink:0;background:var(--panel);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+#propanel-header{
+  padding:.75rem 1rem;border-bottom:1px solid var(--border);
+  font-size:.65rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);
+  display:flex;align-items:center;justify-content:space-between;
+}
+#propanel-body{flex:1;overflow-y:auto;padding:.75rem;}
+#propanel-body::-webkit-scrollbar{width:4px;}
+#propanel-body::-webkit-scrollbar-track{background:transparent;}
+#propanel-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+
+.prop-group{margin-bottom:1.25rem;}
+.prop-label{font-size:.65rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:.4rem;}
+.prop-input{
+  width:100%;padding:7px 10px;background:var(--surface);border:1px solid var(--border);
+  border-radius:5px;color:var(--text);font-family:'Syne',sans-serif;font-size:.82rem;
+  outline:none;transition:border-color .15s;resize:vertical;
+}
+.prop-input:focus{border-color:var(--accent);}
+.prop-row{display:flex;gap:6px;}
+.prop-row .prop-input{flex:1;}
+.color-row{display:flex;gap:6px;align-items:center;}
+.color-swatch{width:32px;height:32px;border-radius:5px;border:1px solid var(--border);cursor:pointer;flex-shrink:0;}
+.prop-select{
+  width:100%;padding:7px 10px;background:var(--surface);border:1px solid var(--border);
+  border-radius:5px;color:var(--text);font-family:'Syne',sans-serif;font-size:.82rem;
+  outline:none;cursor:pointer;
+}
+.prop-select:focus{border-color:var(--accent);}
+.prop-hint{font-size:.68rem;color:var(--muted);margin-top:.3rem;}
+.btn-full{
+  width:100%;padding:8px;border-radius:5px;font-size:.78rem;font-weight:700;
+  letter-spacing:.5px;border:none;cursor:pointer;transition:all .18s;margin-bottom:4px;
+}
+.btn-full.accent{background:var(--accent);color:#000;}
+.btn-full.accent:hover{opacity:.85;}
+.btn-full.ghost{background:var(--surface);color:var(--text);border:1px solid var(--border);}
+.btn-full.ghost:hover{border-color:rgba(255,255,255,.2);}
+.btn-full.dng{background:rgba(245,80,80,.15);color:var(--danger);border:1px solid rgba(245,80,80,.2);}
+.btn-full.dng:hover{background:rgba(245,80,80,.25);}
+
+.no-selection{text-align:center;padding:2rem 1rem;color:var(--muted);font-size:.82rem;line-height:1.6;}
+.no-selection .ns-icon{font-size:2rem;margin-bottom:.75rem;opacity:.4;}
+
+/* ===== GLOBAL SETTINGS PANEL ===== */
+#global-panel{padding:.75rem;}
+.global-colors{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:.75rem;}
+.gc-item{display:flex;flex-direction:column;gap:4px;}
+.gc-label{font-size:.62rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;}
+.gc-swatch{
+  height:32px;border-radius:5px;border:1px solid var(--border);cursor:pointer;
+  transition:border-color .15s;
+}
+.gc-swatch:hover{border-color:var(--accent);}
+
+/* ===== BLOCKS STYLES ===== */
+
+/* NAV BLOCK */
+.pw-nav{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:1rem 2rem;background:rgba(8,11,16,.95);border-bottom:1px solid rgba(255,255,255,.07);
+  position:sticky;top:0;z-index:10;backdrop-filter:blur(16px);
+}
+.pw-nav-logo{font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:3px;}
+.pw-nav-links{display:flex;gap:1.5rem;list-style:none;}
+.pw-nav-links a{font-size:.78rem;font-weight:600;letter-spacing:1px;text-transform:uppercase;text-decoration:none;color:var(--muted);transition:color .2s;}
+.pw-nav-links a:hover{color:var(--accent);}
+.pw-nav-cta{padding:.5rem 1.2rem;border-radius:4px;font-size:.78rem;font-weight:700;text-decoration:none;transition:opacity .2s;letter-spacing:.5px;}
+.pw-nav-cta:hover{opacity:.8;}
+
+/* HERO BLOCK */
+.pw-hero{
+  min-height:85vh;display:flex;align-items:center;padding:5rem 3rem;
+  position:relative;overflow:hidden;
+}
+.pw-hero-bg{
+  position:absolute;inset:0;
+  background:radial-gradient(ellipse 60% 50% at 60% 50%,rgba(0,245,160,.07) 0%,transparent 70%),
+    radial-gradient(ellipse 40% 60% at 20% 80%,rgba(0,168,245,.05) 0%,transparent 60%);
+}
+.pw-hero-grid{
+  position:absolute;inset:0;
+  background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
+  background-size:60px 60px;
+  mask-image:radial-gradient(ellipse 80% 80% at 50% 50%,black 0%,transparent 100%);
+}
+.pw-hero-content{position:relative;z-index:2;max-width:700px;}
+.pw-hero-badge{
+  display:inline-flex;align-items:center;gap:.5rem;
+  padding:.35rem 1rem;border-radius:100px;font-size:.72rem;font-weight:600;letter-spacing:1.5px;
+  text-transform:uppercase;margin-bottom:1.5rem;
+  background:rgba(0,245,160,.1);border:1px solid rgba(0,245,160,.25);color:var(--accent);
+}
+.pw-hero-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;animation:blink 2s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.pw-hero-title{font-family:'Bebas Neue',sans-serif;line-height:.92;letter-spacing:2px;margin-bottom:1.2rem;}
+.pw-hero-desc{line-height:1.75;color:var(--muted);margin-bottom:2rem;max-width:480px;}
+.pw-hero-actions{display:flex;gap:.75rem;flex-wrap:wrap;}
+.pw-btn{
+  padding:.8rem 1.8rem;border-radius:6px;font-weight:700;font-size:.88rem;
+  text-decoration:none;display:inline-flex;align-items:center;gap:.4rem;
+  transition:transform .2s,box-shadow .2s,opacity .2s;border:none;cursor:pointer;font-family:'Syne',sans-serif;
+}
+.pw-btn:hover{transform:translateY(-2px);}
+.pw-btn.solid{box-shadow:0 6px 20px rgba(0,245,160,.25);}
+.pw-btn.solid:hover{box-shadow:0 10px 30px rgba(0,245,160,.35);}
+.pw-btn.outline{border:1px solid rgba(255,255,255,.12);}
+.pw-btn.outline:hover{border-color:rgba(255,255,255,.25);}
+
+/* SECTION BLOCK */
+.pw-section{padding:5rem 3rem;}
+.pw-section-label{font-family:'DM Mono',monospace;font-size:.7rem;letter-spacing:3px;text-transform:uppercase;margin-bottom:.75rem;}
+.pw-section-title{font-family:'Bebas Neue',sans-serif;line-height:1;letter-spacing:1px;margin-bottom:.75rem;}
+.pw-section-desc{line-height:1.75;color:var(--muted);max-width:520px;margin-bottom:3rem;}
+
+/* CARDS BLOCK */
+.pw-cards{display:grid;gap:1.5px;background:var(--border);}
+.pw-card{
+  padding:2rem;background:var(--bg);position:relative;
+  transition:background .25s;
+}
+.pw-card:hover{background:var(--surface);}
+.pw-card-icon{font-size:1.8rem;margin-bottom:1rem;}
+.pw-card-title{font-size:1rem;font-weight:700;margin-bottom:.5rem;}
+.pw-card-desc{font-size:.85rem;color:var(--muted);line-height:1.7;}
+.pw-card-arrow{position:absolute;top:1.5rem;right:1.5rem;font-size:.9rem;color:var(--muted);transition:all .2s;}
+.pw-card:hover .pw-card-arrow{color:var(--accent);transform:translate(2px,-2px);}
+
+/* TEXT BLOCK */
+.pw-text{padding:3rem;}
+.pw-text-title{font-family:'Bebas Neue',sans-serif;letter-spacing:1px;margin-bottom:.75rem;}
+.pw-text-body{line-height:1.8;color:var(--muted);}
+
+/* STATS BLOCK */
+.pw-stats{padding:4rem 3rem;display:grid;gap:2rem;}
+.pw-stat-num{font-family:'Bebas Neue',sans-serif;line-height:1;}
+.pw-stat-label{font-size:.78rem;color:var(--muted);margin-top:.25rem;letter-spacing:.5px;}
+
+/* CTA BLOCK */
+.pw-cta{
+  padding:6rem 3rem;text-align:center;position:relative;overflow:hidden;
+  background:radial-gradient(ellipse 60% 80% at 50% 50%,rgba(0,245,160,.06) 0%,transparent 70%);
+}
+.pw-cta-title{font-family:'Bebas Neue',sans-serif;line-height:1;letter-spacing:2px;margin-bottom:1rem;}
+.pw-cta-desc{color:var(--muted);line-height:1.75;max-width:480px;margin:0 auto 2rem;}
+.pw-cta-actions{display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap;}
+
+/* FOOTER BLOCK */
+.pw-footer{
+  padding:2.5rem 3rem;border-top:1px solid var(--border);
+  display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;
+}
+.pw-footer-logo{font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:3px;}
+.pw-footer-copy{font-size:.75rem;color:var(--muted);font-family:'DM Mono',monospace;}
+.pw-footer-links{display:flex;gap:1.5rem;}
+.pw-footer-links a{font-size:.75rem;color:var(--muted);text-decoration:none;transition:color .2s;}
+.pw-footer-links a:hover{color:var(--accent);}
+
+/* DIVIDER */
+.pw-divider{border:none;border-top:1px solid var(--border);margin:0;}
+
+/* IMAGE BLOCK */
+.pw-image-block{padding:2rem 3rem;}
+.pw-image-placeholder{
+  width:100%;border-radius:8px;background:var(--surface);border:2px dashed var(--border);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  color:var(--muted);gap:.5rem;font-size:.85rem;
+}
+
+/* MARQUEE BLOCK */
+.pw-marquee{overflow:hidden;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:.9rem 0;background:var(--surface);}
+.pw-marquee-track{display:flex;gap:2.5rem;animation:marquee 18s linear infinite;white-space:nowrap;}
+.pw-marquee-item{display:flex;align-items:center;gap:.6rem;font-family:'DM Mono',monospace;font-size:.72rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;flex-shrink:0;}
+.pw-marquee-dot{width:4px;height:4px;border-radius:50%;}
+@keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+
+/* Empty canvas */
+.empty-canvas{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:400px;color:var(--muted);gap:1rem;padding:3rem;text-align:center;
+}
+.empty-canvas .ec-icon{font-size:3rem;opacity:.3;}
+.empty-canvas p{font-size:.88rem;line-height:1.7;}
+
+/* Toast */
+#toast{
+  position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%) translateY(60px);
+  background:var(--accent);color:#000;padding:.6rem 1.4rem;border-radius:100px;
+  font-size:.8rem;font-weight:700;letter-spacing:.5px;z-index:9999;
+  transition:transform .3s ease;pointer-events:none;
+}
+#toast.show{transform:translateX(-50%) translateY(0);}
+
+/* Scrollbar */
+#canvas-wrap::-webkit-scrollbar{width:6px;height:6px;}
+#canvas-wrap::-webkit-scrollbar-track{background:transparent;}
+#canvas-wrap::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div class="topbar-logo">Play<span>Wise</span></div>
+  <div class="topbar-pages" id="pageTabs"></div>
+  <button id="addPageBtn">+ Page</button>
+  <div class="topbar-actions">
+    <div class="mode-toggle">
+      <button class="mode-btn active" id="editModeBtn" onclick="setMode('edit')">✏️ Éditer</button>
+      <button class="mode-btn" id="previewModeBtn" onclick="setMode('preview')">👁 Aperçu</button>
+    </div>
+    <button class="tb-btn" onclick="exportSite()">⬇ Exporter</button>
+    <button class="tb-btn primary" onclick="showToast('✅ Site sauvegardé !')">💾 Sauvegarder</button>
+  </div>
+</div>
+
+<!-- WORKSPACE -->
+<div id="workspace">
+
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div class="sb-section">
+      <div class="sb-title">Blocs</div>
+      <div class="block-list" id="blockList">
+        <div class="block-item" draggable="true" data-block="nav"><span class="bi-icon">🧭</span>Navigation</div>
+        <div class="block-item" draggable="true" data-block="hero"><span class="bi-icon">🚀</span>Hero</div>
+        <div class="block-item" draggable="true" data-block="section"><span class="bi-icon">📋</span>Section titre</div>
+        <div class="block-item" draggable="true" data-block="cards"><span class="bi-icon">🃏</span>Cartes</div>
+        <div class="block-item" draggable="true" data-block="stats"><span class="bi-icon">📊</span>Statistiques</div>
+        <div class="block-item" draggable="true" data-block="text"><span class="bi-icon">📝</span>Texte</div>
+        <div class="block-item" draggable="true" data-block="cta"><span class="bi-icon">⚡</span>Appel à l'action</div>
+        <div class="block-item" draggable="true" data-block="marquee"><span class="bi-icon">📢</span>Bandeau</div>
+        <div class="block-item" draggable="true" data-block="image"><span class="bi-icon">🖼️</span>Image</div>
+        <div class="block-item" draggable="true" data-block="divider"><span class="bi-icon">➖</span>Séparateur</div>
+        <div class="block-item" draggable="true" data-block="footer"><span class="bi-icon">🔻</span>Pied de page</div>
+      </div>
+    </div>
+    <div class="sb-section" style="flex:1;overflow-y:auto;">
+      <div class="sb-title">Couleurs globales</div>
+      <div id="global-panel">
+        <div class="global-colors">
+          <div class="gc-item">
+            <div class="gc-label">Fond</div>
+            <input type="color" class="gc-swatch" id="gc-bg" value="#080b10" oninput="applyGlobalColor('--bg',this.value)">
+          </div>
+          <div class="gc-item">
+            <div class="gc-label">Surface</div>
+            <input type="color" class="gc-swatch" id="gc-surface" value="#0e1420" oninput="applyGlobalColor('--surface',this.value)">
+          </div>
+          <div class="gc-item">
+            <div class="gc-label">Accent</div>
+            <input type="color" class="gc-swatch" id="gc-accent" value="#00f5a0" oninput="applyGlobalColor('--accent',this.value)">
+          </div>
+          <div class="gc-item">
+            <div class="gc-label">Texte</div>
+            <input type="color" class="gc-swatch" id="gc-text" value="#e8edf5" oninput="applyGlobalColor('--text',this.value)">
+          </div>
+          <div class="gc-item">
+            <div class="gc-label">Secondaire</div>
+            <input type="color" class="gc-swatch" id="gc-accent2" value="#f5a000" oninput="applyGlobalColor('--accent2',this.value)">
+          </div>
+          <div class="gc-item">
+            <div class="gc-label">Discret</div>
+            <input type="color" class="gc-swatch" id="gc-muted" value="#6b7a96" oninput="applyGlobalColor('--muted',this.value)">
+          </div>
+        </div>
+        <div class="prop-group">
+          <div class="prop-label">Police titre</div>
+          <select class="prop-select" onchange="applyGlobalFont('title',this.value)">
+            <option value="'Bebas Neue',sans-serif">Bebas Neue</option>
+            <option value="'Syne',sans-serif">Syne</option>
+            <option value="'DM Mono',monospace">DM Mono</option>
+            <option value="Georgia,serif">Georgia</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CANVAS -->
+  <div id="canvas-wrap">
+    <div id="canvas"></div>
+  </div>
+
+  <!-- PROP PANEL -->
+  <div id="propanel">
+    <div id="propanel-header">
+      <span id="propanel-title">Propriétés</span>
+      <span id="propanel-block-type" style="color:var(--accent);font-size:.68rem;"></span>
+    </div>
+    <div id="propanel-body">
+      <div class="no-selection">
+        <div class="ns-icon">👆</div>
+        Sélectionne un bloc pour modifier ses propriétés
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast">Message</div>
+
+<script>
+// ===== STATE =====
+let pages = [
+  { id: 'home', name: 'Accueil', blocks: [] },
+  { id: 'guides', name: 'Guides', blocks: [] },
+  { id: 'contact', name: 'Contact', blocks: [] }
+];
+let currentPageId = 'home';
+let selectedBlockId = null;
+let mode = 'edit';
+let blockIdCounter = 1;
+let dragSrcBlock = null;
+let dragSrcPage = null;
+
+// Default block data per type
+const blockDefaults = {
+  nav: {
+    logo: 'Play<span style="color:var(--accent)">Wise</span>',
+    logoText: 'PlayWise',
+    links: ['Guides','Cartes','Outils','Actus'],
+    ctaText: 'Rejoindre →',
+    ctaColor: '#00f5a0',
+    ctaBg: '#000000',
+    bgColor: 'rgba(8,11,16,0.95)'
+  },
+  hero: {
+    badge: '🎮 Plateforme Gaming · Bêta ouverte',
+    title: 'Joue mieux.\nProgresse plus vite.',
+    titleSize: '72',
+    desc: 'Guides, tutoriels, cartes interactives et outils pensés pour les joueurs qui veulent vraiment s\'améliorer.',
+    descSize: '16',
+    btn1Text: 'Explorer PlayWise →',
+    btn1Color: '#00f5a0',
+    btn1Bg: '#000000',
+    btn2Text: 'Voir les jeux',
+    showBtn2: true,
+    bgColor: '',
+    minHeight: '85'
+  },
+  section: {
+    label: 'Ce qu\'on propose',
+    labelColor: '#00f5a0',
+    title: 'Tout ce dont\ntu as besoin',
+    titleSize: '48',
+    desc: 'Une plateforme construite par des joueurs, pour des joueurs.',
+    descSize: '16',
+    bgColor: ''
+  },
+  cards: {
+    columns: '3',
+    bgColor: '',
+    cards: [
+      { icon:'📖', title:'Guides & Tutoriels', desc:'Des guides étape par étape rédigés par des experts.' },
+      { icon:'🗺️', title:'Cartes Interactives', desc:'Explore des cartes détaillées avec tous les secrets.' },
+      { icon:'⚡', title:'Astuces & Secrets', desc:'Des tricks méconnus pour aller toujours plus loin.' }
+    ]
+  },
+  stats: {
+    columns: '3',
+    bgColor: '',
+    stats: [
+      { num:'12K+', label:'Guides disponibles' },
+      { num:'80+', label:'Jeux couverts' },
+      { num:'340K', label:'Joueurs actifs' }
+    ]
+  },
+  text: {
+    title: 'À propos de PlayWise',
+    titleSize: '36',
+    body: 'PlayWise est une plateforme dédiée aux jeux vidéo qui aide les joueurs à progresser, découvrir de nouveaux jeux et trouver rapidement les informations dont ils ont besoin.',
+    bodySize: '16',
+    bgColor: ''
+  },
+  cta: {
+    label: 'Prêt à commencer ?',
+    labelColor: '#00f5a0',
+    title: 'Rejoins PlayWise\ngratuitement',
+    titleSize: '56',
+    desc: 'Accède à des milliers de guides et ressources dès aujourd\'hui.',
+    descSize: '16',
+    btn1Text: 'Créer un compte gratuit →',
+    btn1Color: '#00f5a0',
+    btn1Bg: '#000000',
+    btn2Text: 'En savoir plus',
+    bgColor: ''
+  },
+  marquee: {
+    items: ['Guides Pro','Cartes Interactives','Tutoriels Vidéo','Astuces Cachées','Actualités Gaming','Outils Pratiques'],
+    dotColor: '#00f5a0',
+    bgColor: '#0e1420',
+    speed: '18'
+  },
+  image: {
+    url: '',
+    alt: 'Image',
+    height: '300',
+    rounded: '8',
+    bgColor: ''
+  },
+  divider: {
+    color: 'rgba(255,255,255,0.07)',
+    margin: '0'
+  },
+  footer: {
+    logoText: 'PlayWise',
+    logoColor: '#00f5a0',
+    copy: '© 2026 PlayWise — Tous droits réservés',
+    links: ['À propos','Mentions légales','Contact','Discord'],
+    bgColor: ''
+  }
+};
+
+// ===== INIT =====
+function init() {
+  // Load default home page
+  const homeBlocks = [
+    createBlockData('nav'),
+    createBlockData('hero'),
+    createBlockData('marquee'),
+    createBlockData('section'),
+    createBlockData('cards'),
+    createBlockData('cta'),
+    createBlockData('footer'),
+  ];
+  pages[0].blocks = homeBlocks;
+
+  // Guides page
+  const guidesTitle = createBlockData('nav');
+  const guidesSection = createBlockData('section');
+  guidesSection.data.label = 'Ressources';
+  guidesSection.data.title = 'Tous\nles Guides';
+  guidesSection.data.desc = 'Trouve des guides pour n\'importe quel jeu, niveau et style de jeu.';
+  const guidesCards = createBlockData('cards');
+  guidesCards.data.cards = [
+    { icon:'⛏️', title:'Minecraft', desc:'Survie, redstone, mods et tout ce qu\'il faut savoir.' },
+    { icon:'🎯', title:'Valorant', desc:'Aim, agents, stratégies et rankeds.' },
+    { icon:'🌍', title:'GTA RP', desc:'Règles serveurs, métiers, immobilier et économie.' },
+    { icon:'🔫', title:'Fortnite', desc:'Builds, armes et méta du moment.' },
+    { icon:'⚔️', title:'Elden Ring', desc:'Boss, builds et exploration complète.' },
+    { icon:'🏆', title:'League of Legends', desc:'Champions, lanes et stratégies de ranked.' }
+  ];
+  guidesCards.data.columns = '3';
+  const guidesFooter = createBlockData('footer');
+  pages[1].blocks = [guidesTitle, guidesSection, guidesCards, guidesFooter];
+
+  // Contact page
+  const contactNav = createBlockData('nav');
+  const contactSection = createBlockData('section');
+  contactSection.data.label = 'Contact';
+  contactSection.data.title = 'Parle-nous';
+  contactSection.data.desc = 'Une question, une suggestion ou un partenariat ? On est là.';
+  const contactText = createBlockData('text');
+  contactText.data.title = 'Comment nous contacter';
+  contactText.data.body = '📧 Email : contact@playwise.gg\n💬 Discord : discord.gg/playwise\n🐦 Twitter : @PlayWiseGG\n\nNous répondons généralement sous 24h.';
+  const contactFooter = createBlockData('footer');
+  pages[2].blocks = [contactNav, contactSection, contactText, contactFooter];
+
+  renderPageTabs();
+  renderCanvas();
+  setupSidebarDrag();
+}
+
+function createBlockData(type) {
+  return {
+    id: 'block_' + (blockIdCounter++),
+    type,
+    data: JSON.parse(JSON.stringify(blockDefaults[type]))
+  };
+}
+
+// ===== PAGES =====
+function renderPageTabs() {
+  const container = document.getElementById('pageTabs');
+  container.innerHTML = '';
+  pages.forEach(page => {
+    const tab = document.createElement('div');
+    tab.className = 'page-tab' + (page.id === currentPageId ? ' active' : '');
+    tab.innerHTML = `<span onclick="switchPage('${page.id}')">${page.name}</span>`;
+    if (pages.length > 1) {
+      const del = document.createElement('button');
+      del.className = 'del-page';
+      del.innerHTML = '×';
+      del.title = 'Supprimer page';
+      del.onclick = (e) => { e.stopPropagation(); deletePage(page.id); };
+      tab.appendChild(del);
+    }
+    container.appendChild(tab);
+  });
+}
+
+function switchPage(id) {
+  currentPageId = id;
+  selectedBlockId = null;
+  renderPageTabs();
+  renderCanvas();
+  showNoSelection();
+}
+
+function addPage() {
+  const name = prompt('Nom de la nouvelle page :','Nouvelle page');
+  if (!name) return;
+  const id = 'page_' + Date.now();
+  const navBlock = createBlockData('nav');
+  const footerBlock = createBlockData('footer');
+  pages.push({ id, name, blocks: [navBlock, footerBlock] });
+  currentPageId = id;
+  selectedBlockId = null;
+  renderPageTabs();
+  renderCanvas();
+  showNoSelection();
+}
+
+function deletePage(id) {
+  if (!confirm('Supprimer cette page ?')) return;
+  pages = pages.filter(p => p.id !== id);
+  if (currentPageId === id) currentPageId = pages[0].id;
+  renderPageTabs();
+  renderCanvas();
+}
+
+document.getElementById('addPageBtn').onclick = addPage;
+
+// ===== CANVAS =====
+function currentPage() { return pages.find(p => p.id === currentPageId); }
+
+function renderCanvas() {
+  const canvas = document.getElementById('canvas');
+  const page = currentPage();
+  canvas.innerHTML = '';
+
+  if (mode === 'preview') canvas.classList.add('preview-mode');
+  else canvas.classList.remove('preview-mode');
+
+  if (page.blocks.length === 0) {
+    canvas.innerHTML = `<div class="empty-canvas"><div class="ec-icon">🧩</div><p>Glisse des blocs depuis le panneau gauche<br>pour construire ta page</p></div>`;
+    setupCanvasDrop(canvas);
+    return;
+  }
+
+  page.blocks.forEach((block, idx) => {
+    const ind = document.createElement('div');
+    ind.className = 'drop-indicator';
+    ind.dataset.idx = idx;
+    canvas.appendChild(ind);
+    canvas.appendChild(createBlockEl(block, idx));
+  });
+
+  const lastInd = document.createElement('div');
+  lastInd.className = 'drop-indicator';
+  lastInd.dataset.idx = page.blocks.length;
+  canvas.appendChild(lastInd);
+
+  setupCanvasDrop(canvas);
+}
+
+function createBlockEl(block, idx) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'block-wrapper';
+  wrapper.dataset.id = block.id;
+  if (block.id === selectedBlockId) wrapper.classList.add('selected');
+
+  wrapper.innerHTML = renderBlockHTML(block);
+
+  if (mode !== 'preview') {
+    const actions = document.createElement('div');
+    actions.className = 'block-actions';
+    actions.innerHTML = `
+      <button class="ba-btn drag-handle" title="Déplacer">⠿</button>
+      <button class="ba-btn" title="Monter" onclick="moveBlock('${block.id}',-1)">↑</button>
+      <button class="ba-btn" title="Descendre" onclick="moveBlock('${block.id}',1)">↓</button>
+      <button class="ba-btn" title="Dupliquer" onclick="duplicateBlock('${block.id}')">⧉</button>
+      <button class="ba-btn danger" title="Supprimer" onclick="deleteBlock('${block.id}')">✕</button>
+    `;
+    wrapper.appendChild(actions);
+
+    wrapper.addEventListener('click', (e) => {
+      if (e.target.closest('.block-actions')) return;
+      selectBlock(block.id);
+    });
+
+    setupBlockDrag(wrapper, block.id);
+  }
+  return wrapper;
+}
+
+function renderBlockHTML(block) {
+  const d = block.data;
+  switch(block.type) {
+    case 'nav': return `
+      <nav class="pw-nav" style="background:${d.bgColor||'rgba(8,11,16,0.95)'}">
+        <div class="pw-nav-logo" style="color:var(--text)">${d.logoText||'PlayWise'}<span style="color:var(--accent)"></span></div>
+        <ul class="pw-nav-links">${(d.links||[]).map(l=>`<li><a href="#">${l}</a></li>`).join('')}</ul>
+        <a href="#" class="pw-nav-cta" style="background:${d.ctaColor||'#00f5a0'};color:${d.ctaBg||'#000'}">${d.ctaText||'Rejoindre'}</a>
+      </nav>`;
+    case 'hero': return `
+      <div class="pw-hero" style="min-height:${d.minHeight||'85'}vh;background:${d.bgColor||''}">
+        <div class="pw-hero-bg"></div><div class="pw-hero-grid"></div>
+        <div class="pw-hero-content">
+          ${d.badge?`<div class="pw-hero-badge">${d.badge}</div>`:''}
+          <div class="pw-hero-title" style="font-size:${d.titleSize||72}px">${(d.title||'').replace(/\n/g,'<br>')}</div>
+          <div class="pw-hero-desc" style="font-size:${d.descSize||16}px">${d.desc||''}</div>
+          <div class="pw-hero-actions">
+            <a href="#" class="pw-btn solid" style="background:${d.btn1Color||'#00f5a0'};color:${d.btn1Bg||'#000'}">${d.btn1Text||'Explorer'}</a>
+            ${d.showBtn2!==false?`<a href="#" class="pw-btn outline" style="color:var(--text)">${d.btn2Text||'En savoir plus'}</a>`:''}
+          </div>
+        </div>
+      </div>`;
+    case 'section': return `
+      <div class="pw-section" style="background:${d.bgColor||''}">
+        <div class="pw-section-label" style="color:${d.labelColor||'#00f5a0'}">${d.label||''}</div>
+        <div class="pw-section-title" style="font-size:${d.titleSize||48}px">${(d.title||'').replace(/\n/g,'<br>')}</div>
+        <div class="pw-section-desc" style="font-size:${d.descSize||16}px">${d.desc||''}</div>
+      </div>`;
+    case 'cards': {
+      const cols = parseInt(d.columns)||3;
+      return `
+      <div style="padding:0 3rem 3rem;background:${d.bgColor||''}">
+        <div class="pw-cards" style="grid-template-columns:repeat(${cols},1fr);border:1px solid var(--border);border-radius:10px;overflow:hidden">
+          ${(d.cards||[]).map(c=>`
+          <div class="pw-card">
+            <div class="pw-card-icon">${c.icon||'📌'}</div>
+            <div class="pw-card-title">${c.title||'Titre'}</div>
+            <div class="pw-card-desc">${c.desc||''}</div>
+            <div class="pw-card-arrow">↗</div>
+          </div>`).join('')}
+        </div>
+      </div>`;}
+    case 'stats': {
+      const cols = parseInt(d.columns)||3;
+      return `
+      <div class="pw-stats" style="grid-template-columns:repeat(${cols},1fr);background:${d.bgColor||''}">
+        ${(d.stats||[]).map(s=>`
+        <div>
+          <div class="pw-stat-num" style="font-size:3.5rem;color:var(--text)">${s.num||'0'}<span style="color:var(--accent)"></span></div>
+          <div class="pw-stat-label">${s.label||''}</div>
+        </div>`).join('')}
+      </div>`;}
+    case 'text': return `
+      <div class="pw-text" style="background:${d.bgColor||''}">
+        <div class="pw-text-title" style="font-size:${d.titleSize||36}px">${d.title||''}</div>
+        <div class="pw-text-body" style="font-size:${d.bodySize||16}px;margin-top:.75rem">${(d.body||'').replace(/\n/g,'<br>')}</div>
+      </div>`;
+    case 'cta': return `
+      <div class="pw-cta" style="background:${d.bgColor||''}">
+        <div class="pw-section-label" style="color:${d.labelColor||'#00f5a0'};margin-bottom:.75rem">${d.label||''}</div>
+        <div class="pw-cta-title" style="font-size:${d.titleSize||56}px">${(d.title||'').replace(/\n/g,'<br>')}</div>
+        <div class="pw-cta-desc" style="font-size:${d.descSize||16}px">${d.desc||''}</div>
+        <div class="pw-cta-actions">
+          <a href="#" class="pw-btn solid" style="background:${d.btn1Color||'#00f5a0'};color:${d.btn1Bg||'#000'}">${d.btn1Text||'Commencer'}</a>
+          ${d.btn2Text?`<a href="#" class="pw-btn outline" style="color:var(--text)">${d.btn2Text}</a>`:''}
+        </div>
+      </div>`;
+    case 'marquee': {
+      const items = (d.items||[]);
+      const doubled = [...items,...items];
+      return `
+      <div class="pw-marquee" style="background:${d.bgColor||'#0e1420'}">
+        <div class="pw-marquee-track" style="animation-duration:${d.speed||18}s">
+          ${doubled.map(item=>`<span class="pw-marquee-item"><span class="pw-marquee-dot" style="background:${d.dotColor||'#00f5a0'}"></span>${item}</span>`).join('')}
+        </div>
+      </div>`;}
+    case 'image': return `
+      <div class="pw-image-block" style="background:${d.bgColor||''}">
+        ${d.url
+          ? `<img src="${d.url}" alt="${d.alt||''}" style="width:100%;height:${d.height||300}px;object-fit:cover;border-radius:${d.rounded||8}px;display:block;">`
+          : `<div class="pw-image-placeholder" style="height:${d.height||300}px;border-radius:${d.rounded||8}px"><span style="font-size:2rem">🖼️</span><span>Ajoute une URL d'image dans le panneau</span></div>`
+        }
+      </div>`;
+    case 'divider': return `<hr class="pw-divider" style="border-color:${d.color||'rgba(255,255,255,0.07)'};margin:${d.margin||0}px 0">`;
+    case 'footer': return `
+      <footer class="pw-footer" style="background:${d.bgColor||''}">
+        <div class="pw-footer-logo" style="color:var(--text)">${d.logoText||'PlayWise'}<span style="color:${d.logoColor||'#00f5a0'}"></span></div>
+        <div class="pw-footer-copy">${d.copy||''}</div>
+        <div class="pw-footer-links">${(d.links||[]).map(l=>`<a href="#">${l}</a>`).join('')}</div>
+      </footer>`;
+    default: return `<div style="padding:2rem;color:var(--muted);text-align:center">Bloc inconnu: ${block.type}</div>`;
+  }
+}
+
+// ===== SELECTION & PROPS =====
+function selectBlock(id) {
+  selectedBlockId = id;
+  document.querySelectorAll('.block-wrapper').forEach(el => {
+    el.classList.toggle('selected', el.dataset.id === id);
+  });
+  const page = currentPage();
+  const block = page.blocks.find(b => b.id === id);
+  if (block) renderPropPanel(block);
+}
+
+function showNoSelection() {
+  selectedBlockId = null;
+  document.querySelectorAll('.block-wrapper').forEach(el => el.classList.remove('selected'));
+  document.getElementById('propanel-title').textContent = 'Propriétés';
+  document.getElementById('propanel-block-type').textContent = '';
+  document.getElementById('propanel-body').innerHTML = `<div class="no-selection"><div class="ns-icon">👆</div>Sélectionne un bloc pour modifier ses propriétés</div>`;
+}
+
+function renderPropPanel(block) {
+  const d = block.data;
+  const typeLabels = {nav:'Navigation',hero:'Hero',section:'Section',cards:'Cartes',stats:'Statistiques',text:'Texte',cta:'Appel à l\'action',marquee:'Bandeau',image:'Image',divider:'Séparateur',footer:'Pied de page'};
+  document.getElementById('propanel-title').textContent = 'Propriétés';
+  document.getElementById('propanel-block-type').textContent = typeLabels[block.type]||block.type;
+  
+  let html = '';
+
+  const inp = (label,key,val,type='text',extra='') =>
+    `<div class="prop-group"><div class="prop-label">${label}</div><input class="prop-input" type="${type}" value="${String(val||'').replace(/"/g,'&quot;')}" oninput="updateProp('${block.id}','${key}',this.value)" ${extra}></div>`;
+  const textarea = (label,key,val) =>
+    `<div class="prop-group"><div class="prop-label">${label}</div><textarea class="prop-input" rows="3" oninput="updateProp('${block.id}','${key}',this.value)">${String(val||'')}</textarea><div class="prop-hint">Utilise ↵ pour les sauts de ligne</div></div>`;
+  const color = (label,key,val) =>
+    `<div class="prop-group"><div class="prop-label">${label}</div><div class="color-row"><input type="color" class="color-swatch" value="${val||'#000000'}" oninput="updateProp('${block.id}','${key}',this.value)"><input class="prop-input" type="text" value="${val||''}" oninput="updateProp('${block.id}','${key}',this.value)" placeholder="#000000 ou rgba(...)"></div></div>`;
+  const sel = (label,key,val,opts) =>
+    `<div class="prop-group"><div class="prop-label">${label}</div><select class="prop-select" onchange="updateProp('${block.id}','${key}',this.value)">${opts.map(o=>`<option value="${o.v}"${val==o.v?' selected':''}>${o.l}</option>`).join('')}</select></div>`;
+
+  switch(block.type) {
+    case 'nav':
+      html += inp('Logo texte','logoText',d.logoText);
+      html += inp('Liens (séparés par ,)','links_str',(d.links||[]).join(','));
+      html += inp('Bouton CTA','ctaText',d.ctaText);
+      html += color('Couleur CTA fond','ctaColor',d.ctaColor);
+      html += color('Couleur CTA texte','ctaBg',d.ctaBg);
+      html += color('Fond nav','bgColor',d.bgColor||'rgba(8,11,16,0.95)');
+      break;
+    case 'hero':
+      html += inp('Badge','badge',d.badge);
+      html += textarea('Titre','title',d.title);
+      html += inp('Taille titre (px)','titleSize',d.titleSize,'number');
+      html += textarea('Description','desc',d.desc);
+      html += inp('Taille desc (px)','descSize',d.descSize,'number');
+      html += inp('Bouton 1','btn1Text',d.btn1Text);
+      html += color('Fond bouton 1','btn1Color',d.btn1Color);
+      html += color('Texte bouton 1','btn1Bg',d.btn1Bg);
+      html += inp('Bouton 2 (vide=masqué)','btn2Text',d.btn2Text);
+      html += inp('Hauteur min (vh)','minHeight',d.minHeight,'number');
+      html += color('Fond section','bgColor',d.bgColor||'#080b10');
+      break;
+    case 'section':
+      html += inp('Label','label',d.label);
+      html += color('Couleur label','labelColor',d.labelColor);
+      html += textarea('Titre','title',d.title);
+      html += inp('Taille titre (px)','titleSize',d.titleSize,'number');
+      html += textarea('Description','desc',d.desc);
+      html += inp('Taille desc (px)','descSize',d.descSize,'number');
+      html += color('Fond section','bgColor',d.bgColor||'#080b10');
+      break;
+    case 'cards':
+      html += sel('Colonnes','columns',d.columns,[{v:'1',l:'1'},{v:'2',l:'2'},{v:'3',l:'3'},{v:'4',l:'4'}]);
+      html += color('Fond section','bgColor',d.bgColor||'#080b10');
+      html += `<div class="prop-group"><div class="prop-label">Cartes</div>`;
+      (d.cards||[]).forEach((c,i) => {
+        html += `<div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px;margin-bottom:6px">
+          <input class="prop-input" style="margin-bottom:4px" type="text" placeholder="Emoji icône" value="${c.icon||''}" oninput="updateCardProp('${block.id}',${i},'icon',this.value)">
+          <input class="prop-input" style="margin-bottom:4px" type="text" placeholder="Titre" value="${c.title||''}" oninput="updateCardProp('${block.id}',${i},'title',this.value)">
+          <textarea class="prop-input" rows="2" placeholder="Description" oninput="updateCardProp('${block.id}',${i},'desc',this.value)">${c.desc||''}</textarea>
+          <button class="btn-full dng" style="margin-top:4px;padding:4px" onclick="removeCard('${block.id}',${i})">Supprimer cette carte</button>
+        </div>`;
+      });
+      html += `</div><button class="btn-full ghost" onclick="addCard('${block.id}')">+ Ajouter une carte</button>`;
+      break;
+    case 'stats':
+      html += sel('Colonnes','columns',d.columns,[{v:'2',l:'2'},{v:'3',l:'3'},{v:'4',l:'4'}]);
+      html += color('Fond section','bgColor',d.bgColor||'#080b10');
+      html += `<div class="prop-group"><div class="prop-label">Statistiques</div>`;
+      (d.stats||[]).forEach((s,i) => {
+        html += `<div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px;margin-bottom:6px">
+          <input class="prop-input" style="margin-bottom:4px" type="text" placeholder="Nombre (ex: 12K+)" value="${s.num||''}" oninput="updateStatProp('${block.id}',${i},'num',this.value)">
+          <input class="prop-input" type="text" placeholder="Label" value="${s.label||''}" oninput="updateStatProp('${block.id}',${i},'label',this.value)">
+          <button class="btn-full dng" style="margin-top:4px;padding:4px" onclick="removeStat('${block.id}',${i})">Supprimer</button>
+        </div>`;
+      });
+      html += `</div><button class="btn-full ghost" onclick="addStat('${block.id}')">+ Ajouter une stat</button>`;
+      break;
+    case 'text':
+      html += inp('Titre','title',d.title);
+      html += inp('Taille titre (px)','titleSize',d.titleSize,'number');
+      html += textarea('Corps du texte','body',d.body);
+      html += inp('Taille texte (px)','bodySize',d.bodySize,'number');
+      html += color('Fond section','bgColor',d.bgColor||'#080b10');
+      break;
+    case 'cta':
+      html += inp('Label','label',d.label);
+      html += color('Couleur label','labelColor',d.labelColor);
+      html += textarea('Titre','title',d.title);
+      html += inp('Taille titre (px)','titleSize',d.titleSize,'number');
+      html += textarea('Description','desc',d.desc);
+      html += inp('Bouton principal','btn1Text',d.btn1Text);
+      html += color('Fond bouton 1','btn1Color',d.btn1Color);
+      html += color('Texte bouton 1','btn1Bg',d.btn1Bg);
+      html += inp('Bouton secondaire','btn2Text',d.btn2Text);
+      html += color('Fond section','bgColor',d.bgColor||'#080b10');
+      break;
+    case 'marquee':
+      html += `<div class="prop-group"><div class="prop-label">Éléments (un par ligne)</div><textarea class="prop-input" rows="6" oninput="updateMarqueeItems('${block.id}',this.value)">${(d.items||[]).join('\n')}</textarea></div>`;
+      html += color('Couleur points','dotColor',d.dotColor);
+      html += color('Fond','bgColor',d.bgColor);
+      html += inp('Vitesse (secondes)','speed',d.speed,'number');
+      break;
+    case 'image':
+      html += inp('URL de l\'image','url',d.url);
+      html += inp('Texte alternatif','alt',d.alt);
+      html += inp('Hauteur (px)','height',d.height,'number');
+      html += inp('Arrondi (px)','rounded',d.rounded,'number');
+      html += color('Fond section','bgColor',d.bgColor||'#080b10');
+      break;
+    case 'divider':
+      html += color('Couleur','color',d.color);
+      html += inp('Marge (px)','margin',d.margin,'number');
+      break;
+    case 'footer':
+      html += inp('Logo texte','logoText',d.logoText);
+      html += color('Couleur logo accent','logoColor',d.logoColor);
+      html += inp('Copyright','copy',d.copy);
+      html += inp('Liens (séparés par ,)','links_str',(d.links||[]).join(','));
+      html += color('Fond','bgColor',d.bgColor||'#080b10');
+      break;
+  }
+
+  html += `<div style="margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border)">
+    <button class="btn-full dng" onclick="deleteBlock('${block.id}')">🗑 Supprimer ce bloc</button>
+  </div>`;
+
+  document.getElementById('propanel-body').innerHTML = html;
+}
+
+// ===== PROP UPDATES =====
+function updateProp(blockId, key, value) {
+  const page = currentPage();
+  const block = page.blocks.find(b => b.id === blockId);
+  if (!block) return;
+
+  if (key === 'links_str') {
+    block.data.links = value.split(',').map(s=>s.trim()).filter(Boolean);
+  } else {
+    block.data[key] = value;
+  }
+  refreshBlock(block);
+}
+
+function updateCardProp(blockId, idx, key, value) {
+  const page = currentPage();
+  const block = page.blocks.find(b => b.id === blockId);
+  if (!block || !block.data.cards[idx]) return;
+  block.data.cards[idx][key] = value;
+  refreshBlock(block);
+}
+
+function updateStatProp(blockId, idx, key, value) {
+  const page = currentPage();
+  const block = page.blocks.find(b => b.id === blockId);
+  if (!block || !block.data.stats[idx]) return;
+  block.data.stats[idx][key] = value;
+  refreshBlock(block);
+}
+
+function updateMarqueeItems(blockId, value) {
+  const page = currentPage();
+  const block = page.blocks.find(b => b.id === blockId);
+  if (!block) return;
+  block.data.items = value.split('\n').map(s=>s.trim()).filter(Boolean);
+  refreshBlock(block);
+}
+
+function addCard(blockId) {
+  const page = currentPage();
+  const block = page.blocks.find(b => b.id === blockId);
+  if (!block) return;
+  block.data.cards.push({ icon:'📌', title:'Nouveau', desc:'Description...' });
+  refreshBlock(block);
+  setTimeout(() => { selectBlock(blockId); }, 50);
+}
+
+function removeCard(blockId, idx) {
+  const page = currentPage();
+  const block = page.blocks.find(b => b.id === blockId);
+  if (!block) return;
+  block.data.cards.splice(idx, 1);
+  refreshBlock(block);
+  setTimeout(() => { selectBlock(blockId); }, 50);
+}
+
+function addStat(blockId) {
+  const page = currentPage();
+  const block = page.blocks.find(b => b.id === blockId);
+  if (!block) return;
+  block.data.stats.push({ num:'0', label:'Label' });
+  refreshBlock(block);
+  setTimeout(() => { selectBlock(blockId); }, 50);
+}
+
+function removeStat(blockId, idx) {
+  const page = currentPage();
+  const block = page.blocks.find(b => b.id === blockId);
+  if (!block) return;
+  block.data.stats.splice(idx, 1);
+  refreshBlock(block);
+  setTimeout(() => { selectBlock(blockId); }, 50);
+}
+
+function refreshBlock(block) {
+  const wrapper = document.querySelector(`.block-wrapper[data-id="${block.id}"]`);
+  if (!wrapper) return;
+  // Re-render content but keep actions
+  const actions = wrapper.querySelector('.block-actions');
+  wrapper.innerHTML = renderBlockHTML(block);
+  if (actions) wrapper.appendChild(actions);
+}
+
+// ===== BLOCK OPERATIONS =====
+function deleteBlock(id) {
+  const page = currentPage();
+  page.blocks = page.blocks.filter(b => b.id !== id);
+  if (selectedBlockId === id) showNoSelection();
+  renderCanvas();
+}
+
+function moveBlock(id, dir) {
+  const page = currentPage();
+  const idx = page.blocks.findIndex(b => b.id === id);
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= page.blocks.length) return;
+  [page.blocks[idx], page.blocks[newIdx]] = [page.blocks[newIdx], page.blocks[idx]];
+  renderCanvas();
+  setTimeout(() => { if (selectedBlockId) selectBlock(selectedBlockId); }, 10);
+}
+
+function duplicateBlock(id) {
+  const page = currentPage();
+  const idx = page.blocks.findIndex(b => b.id === id);
+  const original = page.blocks[idx];
+  const clone = { id: 'block_' + (blockIdCounter++), type: original.type, data: JSON.parse(JSON.stringify(original.data)) };
+  page.blocks.splice(idx + 1, 0, clone);
+  renderCanvas();
+  showToast('Bloc dupliqué');
+}
+
+// ===== DRAG & DROP (sidebar -> canvas) =====
+function setupSidebarDrag() {
+  document.querySelectorAll('.block-item[data-block]').forEach(item => {
+    item.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('newBlockType', item.dataset.block);
+      e.dataTransfer.effectAllowed = 'copy';
+    });
+  });
+}
+
+function setupCanvasDrop(canvas) {
+  canvas.addEventListener('dragover', e => {
+    e.preventDefault();
+    canvas.classList.add('dragover');
+    const ind = getClosestDropIndicator(canvas, e.clientY);
+    document.querySelectorAll('.drop-indicator').forEach(d => d.classList.remove('visible'));
+    if (ind) ind.classList.add('visible');
+  });
+
+  canvas.addEventListener('dragleave', e => {
+    if (!canvas.contains(e.relatedTarget)) {
+      canvas.classList.remove('dragover');
+      document.querySelectorAll('.drop-indicator').forEach(d => d.classList.remove('visible'));
+    }
+  });
+
+  canvas.addEventListener('drop', e => {
+    e.preventDefault();
+    canvas.classList.remove('dragover');
+    document.querySelectorAll('.drop-indicator').forEach(d => d.classList.remove('visible'));
+
+    const newType = e.dataTransfer.getData('newBlockType');
+    const moveId = e.dataTransfer.getData('moveBlockId');
+    const ind = getClosestDropIndicator(canvas, e.clientY);
+    const targetIdx = ind ? parseInt(ind.dataset.idx) : currentPage().blocks.length;
+
+    if (newType) {
+      const block = createBlockData(newType);
+      currentPage().blocks.splice(targetIdx, 0, block);
+      renderCanvas();
+      setTimeout(() => selectBlock(block.id), 20);
+      showToast('Bloc ajouté !');
+    } else if (moveId) {
+      const page = currentPage();
+      const fromIdx = page.blocks.findIndex(b => b.id === moveId);
+      if (fromIdx === -1) return;
+      const [block] = page.blocks.splice(fromIdx, 1);
+      const adjustedIdx = targetIdx > fromIdx ? targetIdx - 1 : targetIdx;
+      page.blocks.splice(adjustedIdx, 0, block);
+      renderCanvas();
+      setTimeout(() => { selectBlock(moveId); }, 20);
+    }
+  });
+}
+
+function getClosestDropIndicator(canvas, y) {
+  const indicators = [...canvas.querySelectorAll('.drop-indicator')];
+  let closest = null, minDist = Infinity;
+  indicators.forEach(ind => {
+    const rect = ind.getBoundingClientRect();
+    const dist = Math.abs(rect.top + rect.height / 2 - y);
+    if (dist < minDist) { minDist = dist; closest = ind; }
+  });
+  return closest;
+}
+
+function setupBlockDrag(wrapper, blockId) {
+  const handle = wrapper.querySelector('.drag-handle');
+  if (!handle) return;
+
+  handle.addEventListener('mousedown', () => { wrapper.draggable = true; });
+  handle.addEventListener('mouseup', () => { wrapper.draggable = false; });
+
+  wrapper.addEventListener('dragstart', e => {
+    e.dataTransfer.setData('moveBlockId', blockId);
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => wrapper.style.opacity = '0.4', 0);
+  });
+
+  wrapper.addEventListener('dragend', () => {
+    wrapper.style.opacity = '';
+    wrapper.draggable = false;
+  });
+}
+
+// ===== GLOBAL COLORS =====
+function applyGlobalColor(varName, value) {
+  document.documentElement.style.setProperty(varName, value);
+}
+
+function applyGlobalFont(type, value) {
+  if (type === 'title') {
+    document.querySelectorAll('.pw-hero-title,.pw-section-title,.pw-cta-title,.pw-text-title,.pw-nav-logo,.pw-footer-logo,.pw-stat-num').forEach(el => {
+      el.style.fontFamily = value;
+    });
+  }
+}
+
+// ===== MODE =====
+function setMode(m) {
+  mode = m;
+  document.getElementById('editModeBtn').classList.toggle('active', m === 'edit');
+  document.getElementById('previewModeBtn').classList.toggle('active', m === 'preview');
+  document.getElementById('sidebar').style.display = m === 'preview' ? 'none' : '';
+  document.getElementById('propanel').style.display = m === 'preview' ? 'none' : '';
+  renderCanvas();
+  if (m === 'preview') showToast('Mode aperçu — clique sur Éditer pour modifier');
+}
+
+// ===== EXPORT =====
+function exportSite() {
+  const page = currentPage();
+  const styles = document.querySelector('style').innerHTML;
+  const bodyContent = page.blocks.map(b => renderBlockHTML(b)).join('\n');
+  const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PlayWise — ${page.name}</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>${styles}</style>
+</head>
+<body style="background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;">
+${bodyContent}
+</body>
+</html>`;
+  const blob = new Blob([html], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `playwise-${page.name.toLowerCase()}.html`;
+  a.click();
+  showToast('Page exportée !');
+}
+
+// ===== TOAST =====
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ===== START =====
+init();
+</script>
+</body>
+</html>
