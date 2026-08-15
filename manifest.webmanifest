@@ -4,11 +4,11 @@
   "description": "Guides, astuces et communauté gaming.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#06101c",
-  "theme_color": "#3b8cff",
+  "background_color": "#25254f",
+  "theme_color": "#25254f",
   "icons": [
     {
-      "src": "/favicon.svg",
+      "src": "/assets/playwise-logo.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
