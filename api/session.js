@@ -1,0 +1,3 @@
+const crypto=require('node:crypto');
+function verify(token,secret){if(!token||!secret)return null;const [p,s]=token.split('.');if(!p||!s)return null;const e=crypto.createHmac('sha256',secret).update(p).digest('base64url');const a=Buffer.from(s),b=Buffer.from(e);if(a.length!==b.length||!crypto.timingSafeEqual(a,b))return null;const o=JSON.parse(Buffer.from(p,'base64url').toString());if(!o.exp||Date.now()>o.exp)return null;return o}
+module.exports=(req,res)=>{res.setHeader('Cache-Control','no-store');const c=req.headers.cookie||'';const m=c.match(/(?:^|; )pw_session=([^;]+)/);const u=verify(m?.[1],process.env.DISCORD_CLIENT_SECRET);res.status(200).json({user:u||null})};
