@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://playwise-ps4tvw8g2k-9935s-projects.vercel.app/sitemap.xml
