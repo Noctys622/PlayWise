@@ -1,0 +1,1 @@
+module.exports=(req,res)=>{res.setHeader('Set-Cookie','pw_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0');res.status(204).end()};
