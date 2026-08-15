@@ -1,0 +1,81 @@
+name: Logo officiel PlayWise
+
+on:
+  push:
+    paths:
+      - '.github/workflows/replace-official-logo.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  replace-logo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remplacer le logo partout
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, json
+
+          svg='''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 474 486" role="img" aria-label="PlayWise">
+          <rect width="474" height="486" fill="#25254f"/>
+          <path fill="#cdc8ce" fill-rule="evenodd" d="M 318 135 L 303 128 L 280 123 L 164 123 L 153 126 L 146 130 L 136 142 L 133 150 L 131 166 L 133 179 L 138 191 L 148 201 L 160 206 L 175 207 L 178 212 L 178 214 L 175 217 L 166 222 L 151 238 L 142 255 L 136 281 L 135 367 L 140 383 L 151 394 L 160 398 L 177 400 L 191 397 L 197 394 L 205 387 L 210 378 L 213 364 L 214 311 L 278 311 L 300 307 L 322 297 L 338 282 L 343 275 L 351 256 L 355 236 L 356 214 L 353 187 L 347 168 L 339 154 L 331 145 Z M 209 200 L 216 195 L 272 196 L 281 201 L 287 209 L 289 215 L 288 236 L 280 247 L 272 251 L 261 253 L 215 252 L 209 247 L 208 244 Z"/>
+          </svg>'''
+          Path('assets').mkdir(exist_ok=True)
+          Path('assets/playwise-logo.svg').write_text(svg,encoding='utf-8')
+          Path('favicon.svg').write_text(svg,encoding='utf-8')
+
+          css=Path('assets/playwise.css')
+          if css.exists():
+              s=css.read_text(encoding='utf-8')
+              s=re.sub(r'\.pw-brand-badge\{[^}]*\}', '.pw-brand-badge{width:42px;height:42px;border-radius:12px;object-fit:cover;display:block;box-shadow:0 12px 32px rgba(59,140,255,.18)}', s, count=1)
+              css.write_text(s,encoding='utf-8')
+
+          for p in Path('.').glob('*.html'):
+              s=p.read_text(encoding='utf-8')
+              # Anciens logos intégrés en base64 (accueil notamment)
+              s=re.sub(r'src="data:image/(?:webp|png);base64,[^"]+"', 'src="/assets/playwise-logo.svg"', s)
+              # Badges P textuels des pages V3
+              s=s.replace('<span class="pw-brand-badge">P</span>', '<img class="pw-brand-badge" src="/assets/playwise-logo.svg" alt="PlayWise">')
+              s=s.replace('<span class="brand-badge">P</span>', '<img class="brand-badge" src="/assets/playwise-logo.svg" alt="PlayWise">')
+              # Page Avis : ajouter le logo dans la marque si elle est encore textuelle
+              s=s.replace('<a class="brand" href="/">PlayWise</a>', '<a class="brand" href="/"><img src="/assets/playwise-logo.svg" alt="PlayWise" style="width:40px;height:40px;border-radius:11px;object-fit:cover;vertical-align:middle;margin-right:9px">PlayWise</a>')
+              # Favicon partout
+              if 'rel="icon"' not in s and '</head>' in s:
+                  s=s.replace('</head>','<link rel="icon" type="image/svg+xml" href="/favicon.svg"></head>',1)
+              p.write_text(s,encoding='utf-8')
+
+          # Guides : l'image remplace le badge P et doit remplir son carré
+          gp=Path('guides.html')
+          if gp.exists():
+              s=gp.read_text(encoding='utf-8')
+              s=s.replace('.brand-badge{width:39px;height:39px;border-radius:11px;background:#252754;display:grid;place-items:center;font-size:1.25rem}', '.brand-badge{width:39px;height:39px;border-radius:11px;object-fit:cover;display:block}')
+              gp.write_text(s,encoding='utf-8')
+
+          # Manifest PWA : le même logo pour l'application installable
+          mp=Path('manifest.webmanifest')
+          if mp.exists():
+              m=json.loads(mp.read_text(encoding='utf-8'))
+              m['background_color']='#25254f'
+              m['theme_color']='#25254f'
+              m['icons']=[{'src':'/assets/playwise-logo.svg','sizes':'any','type':'image/svg+xml','purpose':'any maskable'}]
+              mp.write_text(json.dumps(m,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+
+          # Force le navigateur/PWA à prendre le nouveau logo au lieu du cache V3
+          sw=Path('sw.js')
+          if sw.exists():
+              s=sw.read_text(encoding='utf-8').replace("const C='playwise-v3'","const C='playwise-v4-logo'")
+              s=s.replace("'/favicon.svg']","'/favicon.svg','/assets/playwise-logo.svg']")
+              sw.write_text(s,encoding='utf-8')
+          PY
+
+      - name: Commit
+        run: |
+          git config user.name "PlayWise Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add .
+          git diff --cached --quiet || git commit -m "Utiliser le logo officiel PlayWise partout"
+          git push
