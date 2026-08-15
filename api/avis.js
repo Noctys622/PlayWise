@@ -22,7 +22,7 @@ module.exports=async(req,res)=>{
   res.setHeader('Cache-Control','no-store');
   if(req.method!=='POST')return res.status(405).json({error:'Méthode non autorisée.'});
 
-  const webhook=process.env.DISCORD_WEBHOOK_URL;
+  const webhook=process.env.DISCORD_AVIS_WEBHOOK_URL||process.env.DISCORD_WEBHOOK_URL;
   const secret=process.env.DISCORD_CLIENT_SECRET;
   if(!webhook||!secret)return res.status(503).json({error:'Le système d’avis Discord n’est pas encore configuré.'});
 
@@ -37,7 +37,6 @@ module.exports=async(req,res)=>{
   }
   body=body||{};
 
-  // Honeypot anti-bot.
   if(String(body.website||'').trim())return res.status(200).json({ok:true});
 
   const rating=Number(body.rating);
@@ -59,7 +58,7 @@ module.exports=async(req,res)=>{
         {name:'Note',value:`${stars}  •  ${rating}/5`,inline:true},
         {name:'Compte Discord',value:`<@${String(user.id).replace(/\D/g,'')}>`,inline:true}
       ],
-      footer:{text:'Avis envoyé depuis playwise'},
+      footer:{text:'Avis envoyé depuis PlayWise'},
       timestamp:new Date().toISOString()
     }]
   };
