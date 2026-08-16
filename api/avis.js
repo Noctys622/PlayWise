@@ -45,20 +45,19 @@ module.exports=async(req,res)=>{
   if(message.length<10)return res.status(400).json({error:'Ton avis doit contenir au moins 10 caractères.'});
 
   const displayName=cleanText(user.global_name||user.username||'Membre PlayWise',80);
-  const stars='⭐'.repeat(rating)+'☆'.repeat(5-rating);
+  const label=['','Très mauvais','Mauvais','Correct','Très bien','Excellent'][rating];
+  const stars='⭐'.repeat(rating);
   const payload={
     username:'PlayWise • Avis',
+    avatar_url:'https://raw.githubusercontent.com/Noctys622/PlayWise/main/assets/playwise-logo.svg',
     allowed_mentions:{parse:[]},
     embeds:[{
-      title:'💬 Nouvel avis PlayWise',
-      description:message,
-      color:2327551,
+      color:16753920,
       author:{name:displayName,icon_url:user.avatarUrl||undefined},
-      fields:[
-        {name:'Note',value:`${stars}  •  ${rating}/5`,inline:true},
-        {name:'Compte Discord',value:`<@${String(user.id).replace(/\D/g,'')}>`,inline:true}
-      ],
-      footer:{text:'Avis envoyé depuis PlayWise'},
+      title:`${displayName}`,
+      description:`## ${stars}\n\n💬 **${label}**\n\n> ${message.replace(/\n/g,'\n> ')}\n\n━━━━━━━━━━━━━━━━━━\n*PlayWise · Avis client vérifié*`,
+      thumbnail:{url:user.avatarUrl||'https://cdn.discordapp.com/embed/avatars/0.png'},
+      footer:{text:'⭐ Laisser mon avis sur PlayWise'},
       timestamp:new Date().toISOString()
     }]
   };
