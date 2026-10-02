@@ -14,7 +14,8 @@ const {
   ButtonStyle,
   ModalBuilder,
   TextInputBuilder,
-  TextInputStyle
+  TextInputStyle,
+  StringSelectMenuBuilder
 } = require('discord.js');
 
 const PORT = process.env.PORT || 3000;
@@ -40,6 +41,22 @@ server.listen(PORT, () => console.log('[WEB] Port', PORT));
 
 
 const TICKET_CATEGORY_NAME = '📩 Tickets MP';
+
+const TICKET_SUBJECTS = {
+  assistance: { label: 'Assistance générale', emoji: '🆘' },
+  site: { label: 'Problème avec le site', emoji: '🌐' },
+  discord: { label: 'Problème Discord', emoji: '💬' },
+  bot: { label: 'Problème avec le bot', emoji: '🤖' },
+  partenariat: { label: 'Partenariat', emoji: '🤝' },
+  signalement: { label: 'Signalement', emoji: '🚨' },
+  suggestion: { label: 'Suggestion', emoji: '💡' },
+  autre: { label: 'Autre question / problème', emoji: '❓' }
+};
+
+function ticketSubjectLabel(value) {
+  const item = TICKET_SUBJECTS[value];
+  return item ? item.emoji + ' ' + item.label : '❓ Non précisé';
+}
 
 function ticketTopic(userId) {
   return 'DM_TICKET:' + userId;
@@ -427,6 +444,60 @@ client.on('interactionCreate', async interaction => {
       return;
     }
 
+    if (interaction.isStringSelectMenu() && interaction.customId === 'ticket_subject_menu') {
+      const subject = interaction.values[0];
+      const subjectText = ticketSubjectLabel(subject);
+      const guild = interaction.guild;
+
+      if (!guild) {
+        return interaction.reply({ content: '❌ Ce menu doit être utilisé depuis un serveur.', ephemeral: true });
+      }
+
+      const alreadyOpen = await findTicketChannel(guild, interaction.user.id);
+      const channel = await getOrCreateTicketChannel(guild, interaction.user);
+
+      const welcome = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setAuthor({ name: 'PlayWise • Support MP', iconURL: client.user.displayAvatarURL() })
+        .setTitle('Support PlayWise')
+        .setDescription(
+          'Bonjour **' + interaction.user.username + '** 👋\n\n' +
+          'Votre demande a bien été prise en compte.\n\n' +
+          '**Sujet :** ' + subjectText + '\n\n' +
+          'Décrivez maintenant votre demande directement dans cette conversation. Vous pouvez envoyer du texte, des captures ou des fichiers.\n\n' +
+          '**Propulsé par l’équipe PlayWise** 🔥'
+        )
+        .setFooter({ text: 'PlayWise • Support privé' })
+        .setTimestamp();
+
+      let dmOk = true;
+      await interaction.user.send({ embeds: [welcome] }).catch(() => { dmOk = false; });
+
+      if (!dmOk) {
+        if (!alreadyOpen) await channel.delete('MP fermés lors de la création').catch(() => {});
+        return interaction.reply({
+          content: '⚠️ Je ne peux pas t’envoyer de MP. Active les messages privés du serveur puis réessaie.',
+          ephemeral: true
+        });
+      }
+
+      await channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setTitle('📌 Sujet du ticket')
+            .setDescription(subjectText)
+            .addFields({ name: 'Ouvert depuis', value: interaction.channel.toString(), inline: true })
+            .setTimestamp()
+        ]
+      });
+
+      return interaction.reply({
+        content: '✅ Ta demande a bien été prise en compte ! **Regarde tes MP avec PlayWise** pour continuer.',
+        ephemeral: true
+      });
+    }
+
     if (interaction.isButton() && interaction.customId === 'open_dm_ticket') {
       const guild = interaction.guild;
       if (!guild) {
@@ -741,24 +812,30 @@ client.on('interactionCreate', async interaction => {
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setAuthor({ name: 'PlayWise • Centre de support', iconURL: client.user.displayAvatarURL() })
-        .setTitle('💬 Contacter le support')
+        .setTitle('PlayWise - Support')
         .setDescription(
-          'Tu as une question, un problème ou besoin d’aide ?\n\n' +
-          'Clique sur **Ouvrir un ticket**. PlayWise t’enverra ensuite un **message privé** et toute la conversation avec le staff se fera directement dans tes MP.\n\n' +
-          '🔒 **Conversation privée**\n' +
-          '⚡ **Réponse centralisée avec le staff**\n' +
-          '📩 **Aucun salon visible par les autres membres**'
+          'Bonjour, pour créer un ticket et contacter notre équipe, choisissez le **sujet de votre demande** ci-dessous.\n\n' +
+          'Une fois le sujet sélectionné, PlayWise vous contactera directement en **message privé** pour poursuivre votre demande.\n\n' +
+          '**Propulsé par l’équipe PlayWise** 🔥'
         )
         .setFooter({ text: 'PlayWise • Support MP' })
         .setTimestamp();
 
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('open_dm_ticket')
-          .setLabel('Ouvrir un ticket')
-          .setEmoji('🎫')
-          .setStyle(ButtonStyle.Primary)
-      );
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId('ticket_subject_menu')
+        .setPlaceholder('Choisir le sujet')
+        .addOptions(
+          { label: 'Assistance générale', value: 'assistance', emoji: '🆘', description: 'Besoin d’aide ou d’informations' },
+          { label: 'Problème avec le site', value: 'site', emoji: '🌐', description: 'Bug ou problème sur PlayWise' },
+          { label: 'Problème Discord', value: 'discord', emoji: '💬', description: 'Serveur, rôle ou accès Discord' },
+          { label: 'Problème avec le bot', value: 'bot', emoji: '🤖', description: 'Commande ou fonctionnalité du bot' },
+          { label: 'Partenariat', value: 'partenariat', emoji: '🤝', description: 'Demande de partenariat' },
+          { label: 'Signalement', value: 'signalement', emoji: '🚨', description: 'Signaler un problème ou un membre' },
+          { label: 'Suggestion', value: 'suggestion', emoji: '💡', description: 'Proposer une idée à PlayWise' },
+          { label: 'Autre question / problème', value: 'autre', emoji: '❓', description: 'Toute autre demande' }
+        );
+
+      const row = new ActionRowBuilder().addComponents(menu);
 
       await interaction.channel.send({ embeds: [embed], components: [row] });
       return interaction.reply({ content: '✅ Panneau de tickets envoyé.', ephemeral: true });
