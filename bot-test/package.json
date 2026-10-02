@@ -1,6 +1,6 @@
 {
-  "name": "test-discord-bot",
-  "version": "1.0.0",
+  "name": "playwise-discord-bot",
+  "version": "2.1.0",
   "private": true,
   "type": "commonjs",
   "scripts": {
