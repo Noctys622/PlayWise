@@ -366,6 +366,27 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
+
+client.on('messageCreate', async message => {
+  try {
+    if (message.author.bot) return;
+
+    console.log('[MESSAGE]', message.channel.type === ChannelType.DM ? 'DM' : 'GUILD', message.author.tag || message.author.username);
+
+    if (message.channel.type === ChannelType.DM) {
+      await relayDmToTicket(message);
+      return;
+    }
+
+    if (message.channel.type === ChannelType.GuildText && message.channel.topic?.startsWith('DM_TICKET:')) {
+      const userId = message.channel.topic.slice('DM_TICKET:'.length);
+      await relayStaffToUser(message, userId);
+    }
+  } catch (e) {
+    console.error('[TICKET MP]', e);
+  }
+});
+
 client.on('error', e => console.error('[DISCORD]', e));
 
 const token = process.env.DISCORD_BOT_TOKEN;
