@@ -204,3 +204,148 @@ footer{
   .discord-card{border-radius:20px!important}
   .card,.side-card,.hero-panel{border-radius:18px!important}
 }
+
+/* PlayWise — mobile redesign */
+@media(max-width:650px){
+  html,body{width:100%;overflow-x:hidden}
+  body{background-attachment:scroll!important}
+  .shell{width:calc(100% - 28px)!important;max-width:none!important;margin:0 14px!important}
+
+  header{height:64px!important}
+  .head{min-height:64px!important;height:64px!important;gap:10px!important}
+  .brand{flex:0 0 auto!important}
+  .brand img{width:40px!important;height:40px!important;border-radius:12px!important}
+  .brand span{display:none!important}
+  .nav{min-height:64px!important;margin-left:auto!important;gap:8px!important}
+  .nav>a{display:none!important}
+  .nav-actions{gap:7px!important;max-width:calc(100vw - 82px)!important}
+  .pill-btn{min-height:40px!important;padding:0 11px!important;border-radius:12px!important;font-size:.76rem!important;white-space:nowrap!important}
+  .admin-btn.show{display:inline-flex!important;align-items:center!important;justify-content:center!important;width:40px!important;padding:0!important;font-size:0!important}
+  .admin-btn.show:after{content:"⚙";font-size:1rem}
+  .profile-btn.show{max-width:150px!important;padding:0 10px 0 7px!important}
+  .profile-btn img{width:28px!important;height:28px!important}
+  #username{max-width:95px!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;font-size:.76rem!important}
+  #loginBtn{font-size:.72rem!important;padding:0 10px!important}
+
+  .hero{
+    min-height:auto!important;
+    padding:38px 0 50px!important;
+    overflow:visible!important;
+  }
+  .hero:before{
+    width:430px!important;height:430px!important;
+    right:-210px!important;top:-60px!important;
+    filter:blur(130px)!important;opacity:.14!important;
+  }
+  .hero:after{background-size:38px 38px!important;opacity:.65!important}
+  .hero-grid{display:block!important}
+  .hero-grid>div:first-child{width:100%!important}
+  .eyebrow{
+    max-width:100%!important;
+    font-size:.64rem!important;
+    letter-spacing:.11em!important;
+    line-height:1.2!important;
+    padding:7px 10px!important;
+    white-space:normal!important;
+  }
+  .dot{width:6px!important;height:6px!important;flex:0 0 auto!important}
+  h1{
+    font-size:clamp(3.05rem,14.2vw,4.15rem)!important;
+    line-height:.92!important;
+    letter-spacing:-.055em!important;
+    margin:20px 0 18px!important;
+    max-width:100%!important;
+  }
+  .hero-copy{
+    font-size:1rem!important;
+    line-height:1.62!important;
+    max-width:100%!important;
+    margin:0!important;
+  }
+  .hero-actions{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:10px!important;
+    margin-top:24px!important;
+  }
+  .hero-actions .btn{
+    width:100%!important;
+    min-height:52px!important;
+    border-radius:14px!important;
+    font-size:.95rem!important;
+    padding:0 16px!important;
+  }
+  .search-hero{
+    margin-top:14px!important;
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    gap:8px!important;
+    padding:8px!important;
+    border-radius:16px!important;
+  }
+  .search-hero input{
+    width:100%!important;
+    min-height:48px!important;
+    padding:0 12px!important;
+    font-size:16px!important;
+  }
+  .search-hero button{
+    width:100%!important;
+    min-height:46px!important;
+    border-radius:11px!important;
+    font-size:.92rem!important;
+  }
+
+  .hero-panel{
+    margin-top:20px!important;
+    padding:20px!important;
+    border-radius:18px!important;
+  }
+  .logo-big{width:64px!important;height:64px!important;border-radius:16px!important}
+  .mini{margin-top:16px!important;font-size:.65rem!important}
+  .hero-panel h2{font-size:1.55rem!important;line-height:1.08!important}
+  .hero-panel p{font-size:.92rem!important;line-height:1.55!important}
+  .live-grid{grid-template-columns:repeat(3,1fr)!important;gap:7px!important;margin-top:18px!important}
+  .live{padding:10px 8px!important;border-radius:12px!important;text-align:center!important}
+  .live strong{font-size:1.15rem!important}
+  .live span{font-size:.62rem!important;line-height:1.25!important;display:block!important;margin-top:3px!important}
+  .server-line{padding:11px!important;margin-top:12px!important}
+  .server-icon{width:36px!important;height:36px!important;flex:0 0 auto!important}
+
+  .section{padding:54px 0!important}
+  .section-head{margin-bottom:22px!important}
+  .section h2{font-size:2.25rem!important;line-height:1.02!important;margin-top:8px!important}
+  .section-head p,.section-copy{font-size:.94rem!important;line-height:1.58!important}
+  .game-grid,.guide-grid,.feature-grid{gap:11px!important}
+  .game-card,.guide-card,.feature{padding:18px!important;border-radius:16px!important}
+  .game-card:hover,.guide-card:hover,.feature:hover{transform:none!important}
+  .game-card h3,.feature h3{font-size:1rem!important}
+  .game-card p,.guide-card p,.feature p{font-size:.82rem!important}
+
+  .discord-card{
+    padding:22px!important;
+    gap:18px!important;
+    border-radius:18px!important;
+  }
+  .discord-card h2{font-size:1.8rem!important}
+  .discord-card p{font-size:.92rem!important}
+  .discord-card .btn{min-height:50px!important}
+
+  footer{padding:28px 0!important}
+  .foot{gap:16px!important;font-size:.76rem!important}
+  .foot-links{gap:14px!important;flex-wrap:wrap!important}
+
+  .drawer{width:100%!important;padding:18px!important}
+  .drawer-head{top:-18px!important;padding:16px 0 12px!important}
+  .tabs{position:sticky!important;top:54px!important;z-index:3!important;background:rgba(7,15,27,.96)!important;padding:6px 0!important}
+  .two{grid-template-columns:1fr!important}
+  .toast{max-width:calc(100% - 28px)!important;text-align:center!important}
+}
+
+@media(max-width:390px){
+  .shell{width:calc(100% - 22px)!important;margin:0 11px!important}
+  h1{font-size:clamp(2.8rem,13.8vw,3.6rem)!important}
+  .profile-btn.show{max-width:128px!important}
+  #username{max-width:73px!important}
+  .eyebrow{font-size:.60rem!important}
+}
