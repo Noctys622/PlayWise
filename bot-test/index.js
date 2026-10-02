@@ -118,7 +118,15 @@ async function getOrCreateTicketChannel(guild, user) {
     .setFooter({ text: 'Répondez directement dans ce salon. /close pour fermer.' })
     .setTimestamp();
 
-  await channel.send({ embeds: [embed] });
+  const closeRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('close_dm_ticket')
+      .setLabel('Fermer le ticket')
+      .setEmoji('🔒')
+      .setStyle(ButtonStyle.Danger)
+  );
+
+  await channel.send({ embeds: [embed], components: [closeRow] });
   return channel;
 }
 
@@ -227,6 +235,35 @@ client.on('guildCreate', async guild => {
 
 client.on('interactionCreate', async interaction => {
   try {
+    if (interaction.isButton() && interaction.customId === 'close_dm_ticket') {
+      const topic = interaction.channel?.topic || '';
+
+      if (!topic.startsWith('DM_TICKET:')) {
+        return interaction.reply({
+          content: '❌ Ce bouton ne fonctionne que dans un ticket MP.',
+          ephemeral: true
+        });
+      }
+
+      if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageChannels)) {
+        return interaction.reply({
+          content: '❌ Permission Gérer les salons requise.',
+          ephemeral: true
+        });
+      }
+
+      const userId = topic.slice('DM_TICKET:'.length);
+      const user = await client.users.fetch(userId).catch(() => null);
+
+      if (user) {
+        await user.send('🔒 Ton ticket PlayWise a été fermé par le staff. Tu peux en ouvrir un nouveau depuis le serveur ou en envoyant un MP au bot.').catch(() => {});
+      }
+
+      await interaction.reply('🔒 Ticket fermé. Suppression du salon dans 3 secondes…');
+      setTimeout(() => interaction.channel.delete('Ticket MP fermé via bouton').catch(() => {}), 3000);
+      return;
+    }
+
     if (interaction.isButton() && interaction.customId === 'open_dm_ticket') {
       const guild = interaction.guild;
       if (!guild) {
@@ -260,7 +297,18 @@ client.on('interactionCreate', async interaction => {
         ephemeral: true
       });
 
-      await channel.send('🎫 Ticket ouvert depuis le bouton du panneau support par <@' + interaction.user.id + '>.');
+      const closeRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('close_dm_ticket')
+          .setLabel('Fermer le ticket')
+          .setEmoji('🔒')
+          .setStyle(ButtonStyle.Danger)
+      );
+
+      await channel.send({
+        content: '🎫 Ticket ouvert depuis le bouton du panneau support par <@' + interaction.user.id + '>.',
+        components: [closeRow]
+      });
       return;
     }
 
