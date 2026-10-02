@@ -206,7 +206,46 @@ const commands = [
     .addStringOption(o => o.setName('question').setDescription('Question').setRequired(true)),
   new SlashCommandBuilder().setName('status').setDescription('Affiche le statut du bot'),
   new SlashCommandBuilder().setName('close').setDescription('Ferme un ticket MP'),
-  new SlashCommandBuilder().setName('ticketpanel').setDescription('Envoie le panneau de création de ticket')
+  new SlashCommandBuilder().setName('ticketpanel').setDescription('Envoie le panneau de création de ticket'),
+  new SlashCommandBuilder()
+    .setName('kick').setDescription('Expulse un membre')
+    .addUserOption(o => o.setName('membre').setDescription('Membre à expulser').setRequired(true))
+    .addStringOption(o => o.setName('raison').setDescription('Raison').setRequired(false)),
+  new SlashCommandBuilder()
+    .setName('ban').setDescription('Bannit un membre')
+    .addUserOption(o => o.setName('membre').setDescription('Membre à bannir').setRequired(true))
+    .addStringOption(o => o.setName('raison').setDescription('Raison').setRequired(false)),
+  new SlashCommandBuilder()
+    .setName('timeout').setDescription('Met un membre en timeout')
+    .addUserOption(o => o.setName('membre').setDescription('Membre').setRequired(true))
+    .addIntegerOption(o => o.setName('minutes').setDescription('Durée en minutes').setMinValue(1).setMaxValue(10080).setRequired(true))
+    .addStringOption(o => o.setName('raison').setDescription('Raison').setRequired(false)),
+  new SlashCommandBuilder()
+    .setName('untimeout').setDescription('Retire le timeout d’un membre')
+    .addUserOption(o => o.setName('membre').setDescription('Membre').setRequired(true)),
+  new SlashCommandBuilder()
+    .setName('slowmode').setDescription('Modifie le mode lent du salon')
+    .addIntegerOption(o => o.setName('secondes').setDescription('0 à 21600 secondes').setMinValue(0).setMaxValue(21600).setRequired(true)),
+  new SlashCommandBuilder().setName('lock').setDescription('Verrouille le salon actuel'),
+  new SlashCommandBuilder().setName('unlock').setDescription('Déverrouille le salon actuel'),
+  new SlashCommandBuilder()
+    .setName('nick').setDescription('Change le surnom d’un membre')
+    .addUserOption(o => o.setName('membre').setDescription('Membre').setRequired(true))
+    .addStringOption(o => o.setName('surnom').setDescription('Nouveau surnom').setRequired(true).setMaxLength(32)),
+  new SlashCommandBuilder()
+    .setName('role').setDescription('Ajoute ou retire un rôle')
+    .addStringOption(o => o.setName('action').setDescription('Action').setRequired(true).addChoices(
+      { name: 'Ajouter', value: 'add' },
+      { name: 'Retirer', value: 'remove' }
+    ))
+    .addUserOption(o => o.setName('membre').setDescription('Membre').setRequired(true))
+    .addRoleOption(o => o.setName('role').setDescription('Rôle').setRequired(true)),
+  new SlashCommandBuilder()
+    .setName('announce').setDescription('Envoie une annonce')
+    .addStringOption(o => o.setName('titre').setDescription('Titre').setRequired(true))
+    .addStringOption(o => o.setName('message').setDescription('Message').setRequired(true)),
+  new SlashCommandBuilder().setName('membercount').setDescription('Affiche le nombre de membres'),
+  new SlashCommandBuilder().setName('ticketinfo').setDescription('Affiche les infos du ticket actuel')
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
@@ -333,6 +372,15 @@ client.on('interactionCreate', async interaction => {
           '/clear — supprimer des messages (staff)',
           '/close — fermer un ticket MP (staff)',
           '/ticketpanel — envoyer le panneau de tickets (staff)',
+          '/ticketinfo — infos du ticket actuel',
+          '/kick • /ban — modération',
+          '/timeout • /untimeout — timeout',
+          '/slowmode — mode lent',
+          '/lock • /unlock — verrouiller un salon',
+          '/nick — changer un surnom',
+          '/role — ajouter/retirer un rôle',
+          '/announce — annonce en embed',
+          '/membercount — nombre de membres',
           '',
           '📩 **Tickets par MP**',
           'Un membre envoie un MP au bot → un salon privé est créé.',
@@ -428,6 +476,139 @@ client.on('interactionCreate', async interaction => {
         content: '🟢 PlayWise est en ligne\nServeurs : **' + client.guilds.cache.size + '**\nPing : **' + client.ws.ping + ' ms**',
         ephemeral: true
       });
+    }
+
+
+    if (interaction.commandName === 'kick') {
+      if (!interaction.memberPermissions.has(PermissionFlagsBits.KickMembers)) {
+        return interaction.reply({ content: '❌ Permission Expulser des membres requise.', ephemeral: true });
+      }
+      const user = interaction.options.getUser('membre', true);
+      const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+      const reason = interaction.options.getString('raison') || 'Aucune raison';
+      if (!member || !member.kickable) return interaction.reply({ content: '❌ Je ne peux pas expulser ce membre.', ephemeral: true });
+      await member.kick(reason);
+      return interaction.reply('👢 **' + user.tag + '** a été expulsé. Raison : **' + reason + '**');
+    }
+
+    if (interaction.commandName === 'ban') {
+      if (!interaction.memberPermissions.has(PermissionFlagsBits.BanMembers)) {
+        return interaction.reply({ content: '❌ Permission Bannir des membres requise.', ephemeral: true });
+      }
+      const user = interaction.options.getUser('membre', true);
+      const reason = interaction.options.getString('raison') || 'Aucune raison';
+      await interaction.guild.members.ban(user.id, { reason });
+      return interaction.reply('🔨 **' + user.tag + '** a été banni. Raison : **' + reason + '**');
+    }
+
+    if (interaction.commandName === 'timeout') {
+      if (!interaction.memberPermissions.has(PermissionFlagsBits.ModerateMembers)) {
+        return interaction.reply({ content: '❌ Permission Modérer les membres requise.', ephemeral: true });
+      }
+      const user = interaction.options.getUser('membre', true);
+      const minutes = interaction.options.getInteger('minutes', true);
+      const reason = interaction.options.getString('raison') || 'Aucune raison';
+      const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+      if (!member || !member.moderatable) return interaction.reply({ content: '❌ Je ne peux pas mettre ce membre en timeout.', ephemeral: true });
+      await member.timeout(minutes * 60000, reason);
+      return interaction.reply('⏳ **' + user.tag + '** est en timeout pendant **' + minutes + ' min**.');
+    }
+
+    if (interaction.commandName === 'untimeout') {
+      if (!interaction.memberPermissions.has(PermissionFlagsBits.ModerateMembers)) {
+        return interaction.reply({ content: '❌ Permission Modérer les membres requise.', ephemeral: true });
+      }
+      const user = interaction.options.getUser('membre', true);
+      const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+      if (!member || !member.moderatable) return interaction.reply({ content: '❌ Je ne peux pas modifier ce membre.', ephemeral: true });
+      await member.timeout(null);
+      return interaction.reply('✅ Timeout retiré pour **' + user.tag + '**.');
+    }
+
+    if (interaction.commandName === 'slowmode') {
+      if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageChannels)) {
+        return interaction.reply({ content: '❌ Permission Gérer les salons requise.', ephemeral: true });
+      }
+      const seconds = interaction.options.getInteger('secondes', true);
+      if (!interaction.channel.setRateLimitPerUser) return interaction.reply({ content: '❌ Non disponible dans ce salon.', ephemeral: true });
+      await interaction.channel.setRateLimitPerUser(seconds);
+      return interaction.reply('⏱️ Mode lent réglé sur **' + seconds + ' seconde(s)**.');
+    }
+
+    if (interaction.commandName === 'lock' || interaction.commandName === 'unlock') {
+      if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageChannels)) {
+        return interaction.reply({ content: '❌ Permission Gérer les salons requise.', ephemeral: true });
+      }
+      const locked = interaction.commandName === 'lock';
+      await interaction.channel.permissionOverwrites.edit(interaction.guild.roles.everyone, {
+        SendMessages: locked ? false : null
+      });
+      return interaction.reply(locked ? '🔒 Salon verrouillé.' : '🔓 Salon déverrouillé.');
+    }
+
+    if (interaction.commandName === 'nick') {
+      if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageNicknames)) {
+        return interaction.reply({ content: '❌ Permission Gérer les pseudos requise.', ephemeral: true });
+      }
+      const user = interaction.options.getUser('membre', true);
+      const nickname = interaction.options.getString('surnom', true);
+      const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+      if (!member || !member.manageable) return interaction.reply({ content: '❌ Je ne peux pas modifier ce membre.', ephemeral: true });
+      await member.setNickname(nickname);
+      return interaction.reply('✏️ Surnom de **' + user.tag + '** changé en **' + nickname + '**.');
+    }
+
+    if (interaction.commandName === 'role') {
+      if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageRoles)) {
+        return interaction.reply({ content: '❌ Permission Gérer les rôles requise.', ephemeral: true });
+      }
+      const action = interaction.options.getString('action', true);
+      const user = interaction.options.getUser('membre', true);
+      const role = interaction.options.getRole('role', true);
+      const member = await interaction.guild.members.fetch(user.id).catch(() => null);
+      if (!member) return interaction.reply({ content: '❌ Membre introuvable.', ephemeral: true });
+      if (role.position >= interaction.guild.members.me.roles.highest.position) {
+        return interaction.reply({ content: '❌ Ce rôle est au-dessus ou au même niveau que mon rôle.', ephemeral: true });
+      }
+      if (action === 'add') await member.roles.add(role);
+      else await member.roles.remove(role);
+      return interaction.reply((action === 'add' ? '✅ Rôle ajouté à ' : '✅ Rôle retiré de ') + '**' + user.tag + '** : ' + role.toString());
+    }
+
+    if (interaction.commandName === 'announce') {
+      if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageMessages)) {
+        return interaction.reply({ content: '❌ Permission Gérer les messages requise.', ephemeral: true });
+      }
+      const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('📢 ' + interaction.options.getString('titre', true))
+        .setDescription(interaction.options.getString('message', true))
+        .setFooter({ text: 'PlayWise • Annonce' })
+        .setTimestamp();
+      return interaction.reply({ embeds: [embed] });
+    }
+
+    if (interaction.commandName === 'membercount') {
+      return interaction.reply('👥 **' + interaction.guild.memberCount + '** membres sur **' + interaction.guild.name + '**.');
+    }
+
+    if (interaction.commandName === 'ticketinfo') {
+      const topic = interaction.channel?.topic || '';
+      if (!topic.startsWith('DM_TICKET:')) {
+        return interaction.reply({ content: '❌ Ce salon n’est pas un ticket MP.', ephemeral: true });
+      }
+      const userId = topic.slice('DM_TICKET:'.length);
+      const user = await client.users.fetch(userId).catch(() => null);
+      const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('🎫 Informations du ticket')
+        .addFields(
+          { name: 'Utilisateur', value: user ? '<@' + user.id + '>' : userId, inline: true },
+          { name: 'ID', value: userId, inline: true },
+          { name: 'Salon', value: interaction.channel.toString(), inline: true }
+        )
+        .setTimestamp();
+      return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
     if (interaction.commandName === 'ticketpanel') {
