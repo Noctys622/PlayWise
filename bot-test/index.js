@@ -8,7 +8,10 @@ const {
   PermissionFlagsBits,
   Partials,
   ChannelType,
-  PermissionsBitField
+  PermissionsBitField,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle
 } = require('discord.js');
 
 const PORT = process.env.PORT || 3000;
@@ -194,7 +197,8 @@ const commands = [
     .setDescription('Crée un sondage oui/non')
     .addStringOption(o => o.setName('question').setDescription('Question').setRequired(true)),
   new SlashCommandBuilder().setName('status').setDescription('Affiche le statut du bot'),
-  new SlashCommandBuilder().setName('close').setDescription('Ferme un ticket MP')
+  new SlashCommandBuilder().setName('close').setDescription('Ferme un ticket MP'),
+  new SlashCommandBuilder().setName('ticketpanel').setDescription('Envoie le panneau de création de ticket')
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
@@ -222,9 +226,45 @@ client.on('guildCreate', async guild => {
 });
 
 client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-
   try {
+    if (interaction.isButton() && interaction.customId === 'open_dm_ticket') {
+      const guild = interaction.guild;
+      if (!guild) {
+        return interaction.reply({ content: '❌ Ce bouton doit être utilisé depuis un serveur.', ephemeral: true });
+      }
+
+      const channel = await getOrCreateTicketChannel(guild, interaction.user);
+
+      const welcome = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('🎫 Ticket PlayWise ouvert')
+        .setDescription(
+          'Ton ticket a bien été créé.\n\n' +
+          'Explique-moi ici ton problème ou ta demande. Tous tes messages seront transmis au staff PlayWise, et leurs réponses arriveront directement dans cette conversation.'
+        )
+        .setFooter({ text: 'PlayWise • Support privé' })
+        .setTimestamp();
+
+      let dmOk = true;
+      await interaction.user.send({ embeds: [welcome] }).catch(() => { dmOk = false; });
+
+      if (!dmOk) {
+        return interaction.reply({
+          content: '⚠️ Ton ticket a été créé, mais je ne peux pas t’envoyer de MP. Active les messages privés provenant des membres du serveur puis réessaie.',
+          ephemeral: true
+        });
+      }
+
+      await interaction.reply({
+        content: '✅ Ton ticket est créé ! Je viens de t’envoyer un **message privé**. Continue la discussion dans tes MP.',
+        ephemeral: true
+      });
+
+      await channel.send('🎫 Ticket ouvert depuis le bouton du panneau support par <@' + interaction.user.id + '>.');
+      return;
+    }
+
+    if (!interaction.isChatInputCommand()) return;
     if (interaction.commandName === 'ping') {
       return interaction.reply('🏓 Pong ! **' + client.ws.ping + ' ms**');
     }
@@ -244,6 +284,7 @@ client.on('interactionCreate', async interaction => {
           '/embed — embed (staff)',
           '/clear — supprimer des messages (staff)',
           '/close — fermer un ticket MP (staff)',
+          '/ticketpanel — envoyer le panneau de tickets (staff)',
           '',
           '📩 **Tickets par MP**',
           'Un membre envoie un MP au bot → un salon privé est créé.',
@@ -339,6 +380,34 @@ client.on('interactionCreate', async interaction => {
         content: '🟢 PlayWise est en ligne\nServeurs : **' + client.guilds.cache.size + '**\nPing : **' + client.ws.ping + ' ms**',
         ephemeral: true
       });
+    }
+
+    if (interaction.commandName === 'ticketpanel') {
+      if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageGuild)) {
+        return interaction.reply({ content: '❌ Permission Gérer le serveur requise.', ephemeral: true });
+      }
+
+      const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('🎫 Support PlayWise')
+        .setDescription(
+          'Besoin d’aide ? Ouvre un ticket privé avec notre équipe.\n\n' +
+          'Clique sur le bouton ci-dessous : le bot créera ton ticket et t’enverra immédiatement un message privé pour continuer la discussion.\n\n' +
+          '🔒 **Ta demande reste privée entre toi et le staff.**'
+        )
+        .setFooter({ text: 'PlayWise • Support' })
+        .setTimestamp();
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('open_dm_ticket')
+          .setLabel('Créer un ticket')
+          .setEmoji('🎫')
+          .setStyle(ButtonStyle.Primary)
+      );
+
+      await interaction.channel.send({ embeds: [embed], components: [row] });
+      return interaction.reply({ content: '✅ Panneau de tickets envoyé.', ephemeral: true });
     }
 
     if (interaction.commandName === 'close') {
