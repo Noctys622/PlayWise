@@ -5,11 +5,22 @@ const {
   ActivityType,
   EmbedBuilder,
   SlashCommandBuilder,
-  PermissionFlagsBits
+  PermissionFlagsBits,
+  Partials,
+  ChannelType,
+  PermissionsBitField
 } = require('discord.js');
 
 const PORT = process.env.PORT || 3000;
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.DirectMessages,
+    GatewayIntentBits.MessageContent
+  ],
+  partials: [Partials.Channel]
+});
 
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -20,6 +31,138 @@ const server = http.createServer((req, res) => {
   }));
 });
 server.listen(PORT, () => console.log('[WEB] Port', PORT));
+
+
+const TICKET_CATEGORY_NAME = '📩 Tickets MP';
+
+function ticketTopic(userId) {
+  return 'DM_TICKET:' + userId;
+}
+
+async function getMainGuild() {
+  const configured = process.env.DISCORD_GUILD_ID;
+  if (configured) {
+    const guild = client.guilds.cache.get(configured) || await client.guilds.fetch(configured).catch(() => null);
+    if (guild) return guild;
+  }
+  return client.guilds.cache.first() || null;
+}
+
+async function getOrCreateTicketCategory(guild) {
+  let category = guild.channels.cache.find(
+    c => c.type === ChannelType.GuildCategory && c.name === TICKET_CATEGORY_NAME
+  );
+
+  if (!category) {
+    category = await guild.channels.create({
+      name: TICKET_CATEGORY_NAME,
+      type: ChannelType.GuildCategory,
+      permissionOverwrites: [
+        {
+          id: guild.roles.everyone.id,
+          deny: [PermissionFlagsBits.ViewChannel]
+        }
+      ]
+    });
+  }
+
+  return category;
+}
+
+async function findTicketChannel(guild, userId) {
+  return guild.channels.cache.find(
+    c => c.type === ChannelType.GuildText && c.topic === ticketTopic(userId)
+  ) || null;
+}
+
+function safeChannelName(username, userId) {
+  const slug = username.toLowerCase()
+    .replace(/[^a-z0-9-_]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 20) || 'membre';
+  return ('ticket-' + slug + '-' + userId.slice(-4)).slice(0, 90);
+}
+
+async function getOrCreateTicketChannel(guild, user) {
+  let channel = await findTicketChannel(guild, user.id);
+  if (channel) return channel;
+
+  const category = await getOrCreateTicketCategory(guild);
+
+  channel = await guild.channels.create({
+    name: safeChannelName(user.username, user.id),
+    type: ChannelType.GuildText,
+    parent: category.id,
+    topic: ticketTopic(user.id),
+    permissionOverwrites: [
+      {
+        id: guild.roles.everyone.id,
+        deny: [PermissionFlagsBits.ViewChannel]
+      }
+    ]
+  });
+
+  const embed = new EmbedBuilder()
+    .setColor(0x5865F2)
+    .setTitle('📩 Nouveau ticket par MP')
+    .setDescription('Un membre vient de contacter **PlayWise** en message privé.')
+    .addFields(
+      { name: 'Utilisateur', value: '<@' + user.id + '>', inline: true },
+      { name: 'Pseudo', value: user.tag || user.username, inline: true },
+      { name: 'ID', value: user.id, inline: false }
+    )
+    .setFooter({ text: 'Répondez directement dans ce salon. /close pour fermer.' })
+    .setTimestamp();
+
+  await channel.send({ embeds: [embed] });
+  return channel;
+}
+
+async function relayDmToTicket(message) {
+  const guild = await getMainGuild();
+  if (!guild) {
+    return message.reply("❌ Aucun serveur n'est configuré pour recevoir les tickets.");
+  }
+
+  const channel = await getOrCreateTicketChannel(guild, message.author);
+
+  const embed = new EmbedBuilder()
+    .setColor(0x57F287)
+    .setAuthor({
+      name: message.author.tag || message.author.username,
+      iconURL: message.author.displayAvatarURL()
+    })
+    .setDescription(message.content || '*Message sans texte*')
+    .setFooter({ text: 'Message reçu en MP' })
+    .setTimestamp();
+
+  const files = [...message.attachments.values()].map(a => a.url);
+  await channel.send({ embeds: [embed], files });
+  await message.react('✅').catch(() => {});
+}
+
+async function relayStaffToUser(message, userId) {
+  if (message.author.bot) return;
+  const user = await client.users.fetch(userId).catch(() => null);
+  if (!user) return;
+
+  const embed = new EmbedBuilder()
+    .setColor(0x5865F2)
+    .setAuthor({
+      name: 'Support PlayWise • ' + message.author.username,
+      iconURL: message.author.displayAvatarURL()
+    })
+    .setDescription(message.content || '*Message sans texte*')
+    .setFooter({ text: 'Répondez simplement à ce MP pour continuer le ticket.' })
+    .setTimestamp();
+
+  const files = [...message.attachments.values()].map(a => a.url);
+
+  await user.send({ embeds: [embed], files }).catch(async () => {
+    await message.reply("❌ Impossible d'envoyer un MP à cet utilisateur.").catch(() => {});
+  });
+}
 
 const commands = [
   new SlashCommandBuilder().setName('ping').setDescription('Affiche la latence du bot'),
@@ -50,7 +193,8 @@ const commands = [
     .setName('poll')
     .setDescription('Crée un sondage oui/non')
     .addStringOption(o => o.setName('question').setDescription('Question').setRequired(true)),
-  new SlashCommandBuilder().setName('status').setDescription('Affiche le statut du bot')
+  new SlashCommandBuilder().setName('status').setDescription('Affiche le statut du bot'),
+  new SlashCommandBuilder().setName('close').setDescription('Ferme un ticket MP')
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
@@ -98,7 +242,12 @@ client.on('interactionCreate', async interaction => {
           '/status — état du bot',
           '/say — message du bot (staff)',
           '/embed — embed (staff)',
-          '/clear — supprimer des messages (staff)'
+          '/clear — supprimer des messages (staff)',
+          '/close — fermer un ticket MP (staff)',
+          '',
+          '📩 **Tickets par MP**',
+          'Un membre envoie un MP au bot → un salon privé est créé.',
+          'Le staff répond dans le salon → le membre reçoit la réponse en MP.'
         ].join('\n'))
         .setTimestamp();
       return interaction.reply({ embeds: [embed], ephemeral: true });
@@ -190,6 +339,23 @@ client.on('interactionCreate', async interaction => {
         content: '🟢 PlayWise est en ligne\nServeurs : **' + client.guilds.cache.size + '**\nPing : **' + client.ws.ping + ' ms**',
         ephemeral: true
       });
+    }
+
+    if (interaction.commandName === 'close') {
+      const topic = interaction.channel?.topic || '';
+      if (!topic.startsWith('DM_TICKET:')) {
+        return interaction.reply({ content: '❌ Cette commande doit être utilisée dans un ticket MP.', ephemeral: true });
+      }
+      if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageChannels)) {
+        return interaction.reply({ content: '❌ Permission Gérer les salons requise.', ephemeral: true });
+      }
+      const userId = topic.slice('DM_TICKET:'.length);
+      const user = await client.users.fetch(userId).catch(() => null);
+      if (user) {
+        await user.send('✅ Ton ticket PlayWise a été fermé par le staff. Tu peux renvoyer un MP au bot pour en ouvrir un nouveau.').catch(() => {});
+      }
+      await interaction.reply('🔒 Ticket fermé. Suppression du salon dans 3 secondes…');
+      setTimeout(() => interaction.channel.delete('Ticket MP fermé').catch(() => {}), 3000);
     }
   } catch (e) {
     console.error('[COMMAND ERROR]', e);
