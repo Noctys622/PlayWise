@@ -67,7 +67,8 @@ module.exports=async(req,res)=>{
   const me=await discordJson('https://discord.com/api/v10/users/@me',{headers:{Authorization:'Bot '+bot}});
   if(!me.ok)return res.status(502).json({error:'Le token du bot Discord est invalide.',detail:me.data?.message||('Discord '+me.status)});
 
-  const memberCheck=await discordJson('https://discord.com/api/v10/guilds/'+guildId+'/members/@me',{headers:{Authorization:'Bot '+bot}});
+  const botUserId=me.data?.id;
+  const memberCheck=await discordJson('https://discord.com/api/v10/guilds/'+guildId+'/members/'+botUserId,{headers:{Authorization:'Bot '+bot}});
   if(!memberCheck.ok)return res.status(502).json({error:'Le bot PlayWise n’est pas présent sur le serveur Discord.',detail:memberCheck.data?.message||('Discord '+memberCheck.status)});
 
   const overwrites=[
