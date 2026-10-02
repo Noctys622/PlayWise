@@ -416,3 +416,24 @@ footer{
   }
   .mobile-menu-btn,.mobile-nav,.mobile-nav-bg{display:none!important}
 }
+
+/* Fix mobile menu positioning */
+@media(max-width:650px){
+  .mobile-nav-details{position:static!important}
+  .mobile-nav-popover{
+    position:fixed!important;
+    top:76px!important;
+    right:12px!important;
+    left:auto!important;
+    width:min(340px,calc(100vw - 24px))!important;
+    max-width:calc(100vw - 24px)!important;
+    max-height:calc(100dvh - 90px)!important;
+    overflow:auto!important;
+    z-index:99999!important;
+    transform:none!important;
+  }
+  .mobile-nav-popover a{
+    width:100%!important;
+    box-sizing:border-box!important;
+  }
+}
