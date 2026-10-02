@@ -11,7 +11,10 @@ const {
   PermissionsBitField,
   ActionRowBuilder,
   ButtonBuilder,
-  ButtonStyle
+  ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
 } = require('discord.js');
 
 const PORT = process.env.PORT || 3000;
@@ -108,25 +111,42 @@ async function getOrCreateTicketChannel(guild, user) {
 
   const embed = new EmbedBuilder()
     .setColor(0x5865F2)
-    .setTitle('📩 Nouveau ticket par MP')
-    .setDescription('Un membre vient de contacter **PlayWise** en message privé.')
-    .addFields(
-      { name: 'Utilisateur', value: '<@' + user.id + '>', inline: true },
-      { name: 'Pseudo', value: user.tag || user.username, inline: true },
-      { name: 'ID', value: user.id, inline: false }
+    .setAuthor({ name: 'PlayWise • Support MP', iconURL: client.user.displayAvatarURL() })
+    .setTitle('🎫 Nouveau ticket support')
+    .setThumbnail(user.displayAvatarURL({ size: 256 }))
+    .setDescription(
+      'Une nouvelle conversation privée vient d’être ouverte.\n\n' +
+      '**Répondez simplement dans ce salon** : le bot transmettra automatiquement votre message au membre en MP.'
     )
-    .setFooter({ text: 'Répondez directement dans ce salon. /close pour fermer.' })
+    .addFields(
+      { name: '👤 Membre', value: '<@' + user.id + '>', inline: true },
+      { name: '🏷️ Pseudo', value: user.tag || user.username, inline: true },
+      { name: '🆔 Identifiant', value: '\`' + user.id + '\`', inline: false },
+      { name: '📅 Compte créé', value: '<t:' + Math.floor(user.createdTimestamp / 1000) + ':R>', inline: true },
+      { name: '📌 Statut', value: '🟡 En attente de prise en charge', inline: true }
+    )
+    .setFooter({ text: 'PlayWise • Support privé' })
     .setTimestamp();
 
-  const closeRow = new ActionRowBuilder().addComponents(
+  const actions = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('claim_dm_ticket')
+      .setLabel('Prendre en charge')
+      .setEmoji('🙋')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId('ticket_user_info')
+      .setLabel('Infos membre')
+      .setEmoji('👤')
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('close_dm_ticket')
-      .setLabel('Fermer le ticket')
+      .setLabel('Fermer')
       .setEmoji('🔒')
       .setStyle(ButtonStyle.Danger)
   );
 
-  await channel.send({ embeds: [embed], components: [closeRow] });
+  await channel.send({ embeds: [embed], components: [actions] });
   return channel;
 }
 
@@ -136,7 +156,23 @@ async function relayDmToTicket(message) {
     return message.reply("❌ Aucun serveur n'est configuré pour recevoir les tickets.");
   }
 
+  const existing = await findTicketChannel(guild, message.author.id);
   const channel = await getOrCreateTicketChannel(guild, message.author);
+
+  if (!existing) {
+    const opened = new EmbedBuilder()
+      .setColor(0x5865F2)
+      .setAuthor({ name: 'PlayWise • Support MP', iconURL: client.user.displayAvatarURL() })
+      .setTitle('✅ Ton ticket est ouvert')
+      .setDescription(
+        'Ta demande a bien été transmise à notre équipe.\n\n' +
+        'Tu peux continuer à écrire **directement ici en MP**. Chaque message sera ajouté au même ticket.\n\n' +
+        '⏳ Un membre du staff te répondra dès que possible.'
+      )
+      .setFooter({ text: 'PlayWise • Merci de ne pas ouvrir plusieurs tickets' })
+      .setTimestamp();
+    await message.author.send({ embeds: [opened] }).catch(() => {});
+  }
 
   const embed = new EmbedBuilder()
     .setColor(0x57F287)
@@ -145,7 +181,7 @@ async function relayDmToTicket(message) {
       iconURL: message.author.displayAvatarURL()
     })
     .setDescription(message.content || '*Message sans texte*')
-    .setFooter({ text: 'Message reçu en MP' })
+    .setFooter({ text: 'Message du membre • Répondez dans ce salon' })
     .setTimestamp();
 
   const files = [...message.attachments.values()].map(a => a.url);
@@ -274,32 +310,120 @@ client.on('guildCreate', async guild => {
 
 client.on('interactionCreate', async interaction => {
   try {
-    if (interaction.isButton() && interaction.customId === 'close_dm_ticket') {
+    if (interaction.isButton() && interaction.customId === 'claim_dm_ticket') {
       const topic = interaction.channel?.topic || '';
-
       if (!topic.startsWith('DM_TICKET:')) {
-        return interaction.reply({
-          content: '❌ Ce bouton ne fonctionne que dans un ticket MP.',
-          ephemeral: true
-        });
+        return interaction.reply({ content: '❌ Ce bouton fonctionne uniquement dans un ticket.', ephemeral: true });
       }
-
-      if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageChannels)) {
-        return interaction.reply({
-          content: '❌ Permission Gérer les salons requise.',
-          ephemeral: true
-        });
+      if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageMessages)) {
+        return interaction.reply({ content: '❌ Permission Gérer les messages requise.', ephemeral: true });
       }
 
       const userId = topic.slice('DM_TICKET:'.length);
       const user = await client.users.fetch(userId).catch(() => null);
 
+      const claimed = new EmbedBuilder()
+        .setColor(0x57F287)
+        .setDescription('🙋 Ticket pris en charge par <@' + interaction.user.id + '>.')
+        .setTimestamp();
+
+      await interaction.reply({ embeds: [claimed] });
+
       if (user) {
-        await user.send('🔒 Ton ticket PlayWise a été fermé par le staff. Tu peux en ouvrir un nouveau depuis le serveur ou en envoyant un MP au bot.').catch(() => {});
+        await user.send({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x57F287)
+              .setTitle('🙋 Ton ticket a été pris en charge')
+              .setDescription('**' + interaction.user.username + '** s’occupe maintenant de ta demande. Tu peux continuer à répondre ici.')
+              .setFooter({ text: 'PlayWise • Support MP' })
+              .setTimestamp()
+          ]
+        }).catch(() => {});
+      }
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId === 'ticket_user_info') {
+      const topic = interaction.channel?.topic || '';
+      if (!topic.startsWith('DM_TICKET:')) {
+        return interaction.reply({ content: '❌ Ce bouton fonctionne uniquement dans un ticket.', ephemeral: true });
+      }
+      const userId = topic.slice('DM_TICKET:'.length);
+      const user = await client.users.fetch(userId).catch(() => null);
+      if (!user) return interaction.reply({ content: '❌ Utilisateur introuvable.', ephemeral: true });
+
+      const info = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setTitle('👤 Informations du membre')
+        .setThumbnail(user.displayAvatarURL({ size: 256 }))
+        .addFields(
+          { name: 'Pseudo', value: user.tag || user.username, inline: true },
+          { name: 'ID', value: '\`' + user.id + '\`', inline: true },
+          { name: 'Compte créé', value: '<t:' + Math.floor(user.createdTimestamp / 1000) + ':F>', inline: false }
+        );
+      return interaction.reply({ embeds: [info], ephemeral: true });
+    }
+
+    if (interaction.isButton() && interaction.customId === 'close_dm_ticket') {
+      const topic = interaction.channel?.topic || '';
+      if (!topic.startsWith('DM_TICKET:')) {
+        return interaction.reply({ content: '❌ Ce bouton fonctionne uniquement dans un ticket.', ephemeral: true });
+      }
+      if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageChannels)) {
+        return interaction.reply({ content: '❌ Permission Gérer les salons requise.', ephemeral: true });
       }
 
-      await interaction.reply('🔒 Ticket fermé. Suppression du salon dans 3 secondes…');
-      setTimeout(() => interaction.channel.delete('Ticket MP fermé via bouton').catch(() => {}), 3000);
+      const modal = new ModalBuilder()
+        .setCustomId('close_dm_ticket_modal')
+        .setTitle('Fermer le ticket');
+
+      const reason = new TextInputBuilder()
+        .setCustomId('close_reason')
+        .setLabel('Raison de la fermeture')
+        .setPlaceholder('Ex. Problème résolu')
+        .setRequired(false)
+        .setMaxLength(300)
+        .setStyle(TextInputStyle.Paragraph);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(reason));
+      return interaction.showModal(modal);
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === 'close_dm_ticket_modal') {
+      const topic = interaction.channel?.topic || '';
+      if (!topic.startsWith('DM_TICKET:')) {
+        return interaction.reply({ content: '❌ Ce formulaire ne correspond pas à un ticket.', ephemeral: true });
+      }
+
+      const userId = topic.slice('DM_TICKET:'.length);
+      const reason = interaction.fields.getTextInputValue('close_reason') || 'Aucune raison précisée';
+      const user = await client.users.fetch(userId).catch(() => null);
+
+      if (user) {
+        const closed = new EmbedBuilder()
+          .setColor(0xED4245)
+          .setTitle('🔒 Ticket fermé')
+          .setDescription(
+            'Ton ticket PlayWise vient d’être fermé.\n\n' +
+            '**Raison :** ' + reason + '\n\n' +
+            'Si tu as besoin d’aide plus tard, tu peux simplement rouvrir un ticket.'
+          )
+          .setFooter({ text: 'PlayWise • Support MP' })
+          .setTimestamp();
+        await user.send({ embeds: [closed] }).catch(() => {});
+      }
+
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xED4245)
+            .setTitle('🔒 Ticket fermé')
+            .setDescription('Fermé par <@' + interaction.user.id + '>\n**Raison :** ' + reason)
+            .setTimestamp()
+        ]
+      });
+      setTimeout(() => interaction.channel.delete('Ticket Support MP fermé').catch(() => {}), 4000);
       return;
     }
 
@@ -313,12 +437,14 @@ client.on('interactionCreate', async interaction => {
 
       const welcome = new EmbedBuilder()
         .setColor(0x5865F2)
-        .setTitle('🎫 Ticket PlayWise ouvert')
+        .setAuthor({ name: 'PlayWise • Support MP', iconURL: client.user.displayAvatarURL() })
+        .setTitle('👋 Bienvenue dans ton ticket')
         .setDescription(
-          'Ton ticket a bien été créé.\n\n' +
-          'Explique-moi ici ton problème ou ta demande. Tous tes messages seront transmis au staff PlayWise, et leurs réponses arriveront directement dans cette conversation.'
+          'Ton ticket est maintenant **ouvert**.\n\n' +
+          'Décris ton problème avec le plus de détails possible directement dans cette conversation. Tes messages seront transmis au staff PlayWise et leurs réponses arriveront ici.\n\n' +
+          '📎 Tu peux aussi envoyer des captures ou fichiers.'
         )
-        .setFooter({ text: 'PlayWise • Support privé' })
+        .setFooter({ text: 'PlayWise • Un seul ticket par personne' })
         .setTimestamp();
 
       let dmOk = true;
@@ -336,17 +462,13 @@ client.on('interactionCreate', async interaction => {
         ephemeral: true
       });
 
-      const closeRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('close_dm_ticket')
-          .setLabel('Fermer le ticket')
-          .setEmoji('🔒')
-          .setStyle(ButtonStyle.Danger)
-      );
-
       await channel.send({
-        content: '🎫 Ticket ouvert depuis le bouton du panneau support par <@' + interaction.user.id + '>.',
-        components: [closeRow]
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setDescription('📨 Ticket ouvert depuis le panneau support par <@' + interaction.user.id + '>.')
+            .setTimestamp()
+        ]
       });
       return;
     }
@@ -618,19 +740,22 @@ client.on('interactionCreate', async interaction => {
 
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
-        .setTitle('🎫 Support PlayWise')
+        .setAuthor({ name: 'PlayWise • Centre de support', iconURL: client.user.displayAvatarURL() })
+        .setTitle('💬 Contacter le support')
         .setDescription(
-          'Besoin d’aide ? Ouvre un ticket privé avec notre équipe.\n\n' +
-          'Clique sur le bouton ci-dessous : le bot créera ton ticket et t’enverra immédiatement un message privé pour continuer la discussion.\n\n' +
-          '🔒 **Ta demande reste privée entre toi et le staff.**'
+          'Tu as une question, un problème ou besoin d’aide ?\n\n' +
+          'Clique sur **Ouvrir un ticket**. PlayWise t’enverra ensuite un **message privé** et toute la conversation avec le staff se fera directement dans tes MP.\n\n' +
+          '🔒 **Conversation privée**\n' +
+          '⚡ **Réponse centralisée avec le staff**\n' +
+          '📩 **Aucun salon visible par les autres membres**'
         )
-        .setFooter({ text: 'PlayWise • Support' })
+        .setFooter({ text: 'PlayWise • Support MP' })
         .setTimestamp();
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId('open_dm_ticket')
-          .setLabel('Créer un ticket')
+          .setLabel('Ouvrir un ticket')
           .setEmoji('🎫')
           .setStyle(ButtonStyle.Primary)
       );
