@@ -55,8 +55,11 @@ const commands = [
 
 client.once('ready', async () => {
   console.log('[DISCORD] Connecté en tant que', client.user.tag);
+  for (const guild of client.guilds.cache.values()) {
+    try { await guild.members.me?.setNickname('PlayWise'); } catch {}
+  }
   client.user.setPresence({
-    activities: [{ name: '/help • test', type: ActivityType.Playing }],
+    activities: [{ name: '/help • PlayWise', type: ActivityType.Playing }],
     status: 'online'
   });
 
@@ -85,7 +88,7 @@ client.on('interactionCreate', async interaction => {
     if (interaction.commandName === 'help') {
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
-        .setTitle('🤖 Commandes de test')
+        .setTitle('🤖 PlayWise — Commandes')
         .setDescription([
           '/ping — latence',
           '/serverinfo — infos serveur',
@@ -184,7 +187,7 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.commandName === 'status') {
       return interaction.reply({
-        content: '🟢 Bot en ligne\nServeurs : **' + client.guilds.cache.size + '**\nPing : **' + client.ws.ping + ' ms**',
+        content: '🟢 PlayWise est en ligne\nServeurs : **' + client.guilds.cache.size + '**\nPing : **' + client.ws.ping + ' ms**',
         ephemeral: true
       });
     }
