@@ -1058,8 +1058,9 @@ client.on('messageCreate', async message => {
     }
 
     if (message.channel.type === ChannelType.GuildText && message.channel.topic?.startsWith('DM_TICKET:')) {
-      const userId = message.channel.topic.slice('DM_TICKET:'.length);
-      await relayStaffToUser(message, userId);
+      const data = parseTicketTopic(message.channel.topic);
+      if (!data?.userId) return;
+      await relayStaffToUser(message, data.userId);
     }
   } catch (e) {
     console.error('[TICKET MP]', e);
