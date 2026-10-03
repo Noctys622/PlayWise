@@ -914,6 +914,7 @@ function shutdown(code) {
   stopping = true;
   clearTimeout(retryTimer);
   clearInterval(connectionWatchdog);
+  clearInterval(keepAliveTimer);
   const deadline = setTimeout(() => process.exit(code), 5000);
   deadline.unref();
   Promise.resolve(client.destroy()).catch(() => {}).finally(() => {
@@ -956,6 +957,38 @@ const connectionWatchdog = setInterval(() => {
   }
 }, 15000);
 connectionWatchdog.unref();
+
+// Best-effort activity while this process is running; cannot wake a stopped instance.
+let keepAliveTimer;
+let keepAliveInProgress = false;
+const renderUrl = process.env.RENDER_EXTERNAL_URL;
+if (renderUrl && process.env.KEEP_ALIVE_ENABLED !== 'false') {
+  try {
+    const target = new URL('/', renderUrl);
+    if (target.protocol === 'https:' && target.hostname.endsWith('.onrender.com')) {
+      keepAliveTimer = setInterval(async () => {
+        if (stopping || keepAliveInProgress) return;
+        keepAliveInProgress = true;
+        try {
+          const response = await fetch(target, {
+            signal: AbortSignal.timeout(10000),
+            headers: { 'User-Agent': 'PlayWise-KeepAlive/1.0' }
+          });
+          await response.body?.cancel();
+          if (!response.ok) console.warn('[WEB] Maintien actif: HTTP', response.status);
+        } catch (error) {
+          if (!stopping) console.warn('[WEB] Maintien actif:', error.message);
+        } finally {
+          keepAliveInProgress = false;
+        }
+      }, 300000);
+      keepAliveTimer.unref();
+      console.log('[WEB] Maintien actif toutes les 5 minutes (sans garantie sur Render gratuit).');
+    }
+  } catch {
+    console.warn('[WEB] Adresse Render invalide, maintien actif désactivé.');
+  }
+}
 
 const token = process.env.DISCORD_BOT_TOKEN;
 async function connectDiscord() {
