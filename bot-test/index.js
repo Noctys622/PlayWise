@@ -613,6 +613,28 @@ client.on('interactionCreate', async interaction => {
       return;
     }
 
+    if (interaction.isButton() && interaction.customId === 'open_ticket_categories') {
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId('ticket_subject_menu')
+        .setPlaceholder('Choisir une catégorie')
+        .addOptions(
+          { label: 'Assistance générale', value: 'assistance', emoji: '🆘', description: 'Besoin d’aide ou d’informations' },
+          { label: 'Problème avec le site', value: 'site', emoji: '🌐', description: 'Bug ou problème sur PlayWise' },
+          { label: 'Problème Discord', value: 'discord', emoji: '💬', description: 'Serveur, rôle ou accès Discord' },
+          { label: 'Problème avec le bot', value: 'bot', emoji: '🤖', description: 'Commande ou fonctionnalité du bot' },
+          { label: 'Partenariat', value: 'partenariat', emoji: '🤝', description: 'Demande de partenariat' },
+          { label: 'Signalement', value: 'signalement', emoji: '🚨', description: 'Signaler un problème ou un membre' },
+          { label: 'Suggestion', value: 'suggestion', emoji: '💡', description: 'Proposer une idée à PlayWise' },
+          { label: 'Autre question / problème', value: 'autre', emoji: '❓', description: 'Toute autre demande' }
+        );
+
+      return interaction.reply({
+        content: 'Choisis la catégorie de ton ticket :',
+        components: [new ActionRowBuilder().addComponents(menu)],
+        ephemeral: true
+      });
+    }
+
     if (interaction.isStringSelectMenu() && interaction.customId === 'ticket_subject_menu') {
       const subject = interaction.values[0];
       const subjectText = ticketSubjectLabel(subject);
@@ -997,31 +1019,21 @@ client.on('interactionCreate', async interaction => {
 
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
-        .setAuthor({ name: 'PlayWise • Centre de support', iconURL: client.user.displayAvatarURL() })
-        .setTitle('PlayWise - Support')
+        .setAuthor({ name: 'PlayWise • Support', iconURL: client.user.displayAvatarURL() })
+        .setTitle('PlayWise - Bot')
         .setDescription(
-          'Bonjour, pour créer un ticket et contacter notre équipe, choisissez le **sujet de votre demande** ci-dessous.\n\n' +
-          'Une fois le sujet sélectionné, PlayWise vous contactera directement en **message privé** pour poursuivre votre demande.\n\n' +
+          'Pour créer un ticket, cliquez sur le bouton ci-dessous.\n\n' +
           '**Propulsé par l’équipe PlayWise** 🔥'
         )
-        .setFooter({ text: 'PlayWise • Support MP' })
-        .setTimestamp();
+        .setFooter({ text: 'PlayWise • Support' });
 
-      const menu = new StringSelectMenuBuilder()
-        .setCustomId('ticket_subject_menu')
-        .setPlaceholder('Choisir le sujet')
-        .addOptions(
-          { label: 'Assistance générale', value: 'assistance', emoji: '🆘', description: 'Besoin d’aide ou d’informations' },
-          { label: 'Problème avec le site', value: 'site', emoji: '🌐', description: 'Bug ou problème sur PlayWise' },
-          { label: 'Problème Discord', value: 'discord', emoji: '💬', description: 'Serveur, rôle ou accès Discord' },
-          { label: 'Problème avec le bot', value: 'bot', emoji: '🤖', description: 'Commande ou fonctionnalité du bot' },
-          { label: 'Partenariat', value: 'partenariat', emoji: '🤝', description: 'Demande de partenariat' },
-          { label: 'Signalement', value: 'signalement', emoji: '🚨', description: 'Signaler un problème ou un membre' },
-          { label: 'Suggestion', value: 'suggestion', emoji: '💡', description: 'Proposer une idée à PlayWise' },
-          { label: 'Autre question / problème', value: 'autre', emoji: '❓', description: 'Toute autre demande' }
-        );
-
-      const row = new ActionRowBuilder().addComponents(menu);
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('open_ticket_categories')
+          .setLabel('Créer un ticket')
+          .setEmoji('🎫')
+          .setStyle(ButtonStyle.Primary)
+      );
 
       await interaction.channel.send({ embeds: [embed], components: [row] });
       return interaction.reply({ content: '✅ Panneau de tickets envoyé.', ephemeral: true });
