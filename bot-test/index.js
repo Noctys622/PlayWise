@@ -55,7 +55,8 @@ server.on('error', error => {
 });
 
 
-const TICKET_CATEGORY_NAME = '📩 Tickets MP';
+const TICKET_CATEGORY_NAME = '📩・tickets-mp';
+const TICKET_LOG_CHANNEL_NAME = '📜・ticket-logs';
 
 const TICKET_SUBJECTS = {
   assistance: { label: 'Assistance générale', emoji: '🆘' },
@@ -73,8 +74,17 @@ function ticketSubjectLabel(value) {
   return item ? item.emoji + ' ' + item.label : '❓ Non précisé';
 }
 
-function ticketTopic(userId) {
-  return 'DM_TICKET:' + userId;
+function ticketTopic(userId, subject = 'autre', claimedBy = '') {
+  return 'DM_TICKET:' + userId + '|SUBJECT:' + subject + (claimedBy ? '|CLAIM:' + claimedBy : '');
+}
+
+function parseTicketTopic(topic = '') {
+  if (!topic.startsWith('DM_TICKET:')) return null;
+  const parts = topic.split('|');
+  const userId = parts[0].slice('DM_TICKET:'.length);
+  const subject = (parts.find(p => p.startsWith('SUBJECT:')) || 'SUBJECT:autre').slice('SUBJECT:'.length);
+  const claimedBy = (parts.find(p => p.startsWith('CLAIM:')) || 'CLAIM:').slice('CLAIM:'.length) || null;
+  return { userId, subject, claimedBy };
 }
 
 async function getMainGuild() {
@@ -86,30 +96,70 @@ async function getMainGuild() {
   return client.guilds.cache.first() || null;
 }
 
+function getStaffRole(guild) {
+  const configured = process.env.TICKET_STAFF_ROLE_ID;
+  if (configured && guild.roles.cache.has(configured)) return guild.roles.cache.get(configured);
+  return guild.roles.cache
+    .filter(r => r.id !== guild.roles.everyone.id)
+    .sort((a, b) => b.position - a.position)
+    .find(r => /staff|support|mod[eé]rateur|admin/i.test(r.name)) || null;
+}
+
 async function getOrCreateTicketCategory(guild) {
   let category = guild.channels.cache.find(
     c => c.type === ChannelType.GuildCategory && c.name === TICKET_CATEGORY_NAME
   );
 
   if (!category) {
+    const staffRole = getStaffRole(guild);
+    const overwrites = [{
+      id: guild.roles.everyone.id,
+      deny: [PermissionFlagsBits.ViewChannel]
+    }];
+
+    if (staffRole) {
+      overwrites.push({
+        id: staffRole.id,
+        allow: [
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.SendMessages,
+          PermissionFlagsBits.ReadMessageHistory,
+          PermissionFlagsBits.AttachFiles
+        ]
+      });
+    }
+
     category = await guild.channels.create({
       name: TICKET_CATEGORY_NAME,
       type: ChannelType.GuildCategory,
-      permissionOverwrites: [
-        {
-          id: guild.roles.everyone.id,
-          deny: [PermissionFlagsBits.ViewChannel]
-        }
-      ]
+      permissionOverwrites: overwrites
     });
   }
 
   return category;
 }
 
+async function getOrCreateTicketLogChannel(guild) {
+  const category = await getOrCreateTicketCategory(guild);
+  let channel = guild.channels.cache.find(
+    c => c.type === ChannelType.GuildText && c.name === TICKET_LOG_CHANNEL_NAME && c.parentId === category.id
+  );
+
+  if (!channel) {
+    channel = await guild.channels.create({
+      name: TICKET_LOG_CHANNEL_NAME,
+      type: ChannelType.GuildText,
+      parent: category.id,
+      topic: 'Logs des tickets MP PlayWise'
+    });
+  }
+
+  return channel;
+}
+
 async function findTicketChannel(guild, userId) {
   return guild.channels.cache.find(
-    c => c.type === ChannelType.GuildText && c.topic === ticketTopic(userId)
+    c => c.type === ChannelType.GuildText && c.topic?.startsWith('DM_TICKET:' + userId + '|')
   ) || null;
 }
 
@@ -122,50 +172,14 @@ function safeChannelName(username, userId) {
   return ('ticket-' + slug + '-' + userId.slice(-4)).slice(0, 90);
 }
 
-async function getOrCreateTicketChannel(guild, user) {
-  let channel = await findTicketChannel(guild, user.id);
-  if (channel) return channel;
-
-  const category = await getOrCreateTicketCategory(guild);
-
-  channel = await guild.channels.create({
-    name: safeChannelName(user.username, user.id),
-    type: ChannelType.GuildText,
-    parent: category.id,
-    topic: ticketTopic(user.id),
-    permissionOverwrites: [
-      {
-        id: guild.roles.everyone.id,
-        deny: [PermissionFlagsBits.ViewChannel]
-      }
-    ]
-  });
-
-  const embed = new EmbedBuilder()
-    .setColor(0x5865F2)
-    .setAuthor({ name: 'PlayWise • Support MP', iconURL: client.user.displayAvatarURL() })
-    .setTitle('🎫 Nouveau ticket support')
-    .setThumbnail(user.displayAvatarURL({ size: 256 }))
-    .setDescription(
-      'Une nouvelle conversation privée vient d’être ouverte.\n\n' +
-      '**Répondez simplement dans ce salon** : le bot transmettra automatiquement votre message au membre en MP.'
-    )
-    .addFields(
-      { name: '👤 Membre', value: '<@' + user.id + '>', inline: true },
-      { name: '🏷️ Pseudo', value: user.tag || user.username, inline: true },
-      { name: '🆔 Identifiant', value: '\`' + user.id + '\`', inline: false },
-      { name: '📅 Compte créé', value: '<t:' + Math.floor(user.createdTimestamp / 1000) + ':R>', inline: true },
-      { name: '📌 Statut', value: '🟡 En attente de prise en charge', inline: true }
-    )
-    .setFooter({ text: 'PlayWise • Support privé' })
-    .setTimestamp();
-
-  const actions = new ActionRowBuilder().addComponents(
+function buildTicketActions(claimedBy = null) {
+  return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('claim_dm_ticket')
-      .setLabel('Prendre en charge')
-      .setEmoji('🙋')
-      .setStyle(ButtonStyle.Success),
+      .setLabel(claimedBy ? 'Pris en charge' : 'Prendre en charge')
+      .setEmoji(claimedBy ? '✅' : '🙋')
+      .setStyle(claimedBy ? ButtonStyle.Secondary : ButtonStyle.Success)
+      .setDisabled(Boolean(claimedBy)),
     new ButtonBuilder()
       .setCustomId('ticket_user_info')
       .setLabel('Infos membre')
@@ -177,8 +191,66 @@ async function getOrCreateTicketChannel(guild, user) {
       .setEmoji('🔒')
       .setStyle(ButtonStyle.Danger)
   );
+}
 
-  await channel.send({ embeds: [embed], components: [actions] });
+function buildTicketStaffEmbed(user, subject = 'autre', claimedBy = null) {
+  return new EmbedBuilder()
+    .setColor(claimedBy ? 0x57F287 : 0xFEE75C)
+    .setAuthor({ name: 'PlayWise • Support privé', iconURL: client.user.displayAvatarURL() })
+    .setTitle('🎫 Ticket de ' + user.username)
+    .setThumbnail(user.displayAvatarURL({ size: 256 }))
+    .setDescription(
+      'Un membre vient de contacter le support en message privé.\n\n' +
+      '**Répondez directement dans ce salon** : chaque message sera transmis en MP au membre.'
+    )
+    .addFields(
+      { name: '👤 Membre', value: '<@' + user.id + '>', inline: true },
+      { name: '🆔 ID', value: '\\`' + user.id + '\\`', inline: true },
+      { name: '📂 Sujet', value: ticketSubjectLabel(subject), inline: false },
+      { name: '📌 Statut', value: claimedBy ? '🟢 Pris en charge' : '🟠 En attente d’un membre du staff', inline: true },
+      { name: '🛡️ Responsable', value: claimedBy ? '<@' + claimedBy + '>' : 'Aucun', inline: true }
+    )
+    .setFooter({ text: 'PlayWise • Ticket MP' })
+    .setTimestamp();
+}
+
+async function getOrCreateTicketChannel(guild, user, subject = 'autre') {
+  let channel = await findTicketChannel(guild, user.id);
+  if (channel) return channel;
+
+  const category = await getOrCreateTicketCategory(guild);
+  const staffRole = getStaffRole(guild);
+
+  const overwrites = [{
+    id: guild.roles.everyone.id,
+    deny: [PermissionFlagsBits.ViewChannel]
+  }];
+
+  if (staffRole) {
+    overwrites.push({
+      id: staffRole.id,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.AttachFiles
+      ]
+    });
+  }
+
+  channel = await guild.channels.create({
+    name: safeChannelName(user.username, user.id),
+    type: ChannelType.GuildText,
+    parent: category.id,
+    topic: ticketTopic(user.id, subject),
+    permissionOverwrites: overwrites
+  });
+
+  await channel.send({
+    embeds: [buildTicketStaffEmbed(user, subject)],
+    components: [buildTicketActions()]
+  });
+
   return channel;
 }
 
@@ -189,31 +261,35 @@ async function relayDmToTicket(message) {
   }
 
   const existing = await findTicketChannel(guild, message.author.id);
-  const channel = await getOrCreateTicketChannel(guild, message.author);
+  const channel = await getOrCreateTicketChannel(guild, message.author, 'autre');
 
   if (!existing) {
-    const opened = new EmbedBuilder()
-      .setColor(0x5865F2)
-      .setAuthor({ name: 'PlayWise • Support MP', iconURL: client.user.displayAvatarURL() })
-      .setTitle('✅ Ton ticket est ouvert')
-      .setDescription(
-        'Ta demande a bien été transmise à notre équipe.\n\n' +
-        'Tu peux continuer à écrire **directement ici en MP**. Chaque message sera ajouté au même ticket.\n\n' +
-        '⏳ Un membre du staff te répondra dès que possible.'
-      )
-      .setFooter({ text: 'PlayWise • Merci de ne pas ouvrir plusieurs tickets' })
-      .setTimestamp();
-    await message.author.send({ embeds: [opened] }).catch(() => {});
+    await message.author.send({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x5865F2)
+          .setAuthor({ name: 'PlayWise • Support', iconURL: client.user.displayAvatarURL() })
+          .setTitle('🎫 Ticket ouvert')
+          .setDescription(
+            'Bonjour **' + message.author.username + '** 👋\n\n' +
+            'Ton ticket vient d’être créé. Tu peux continuer à écrire **ici en MP**.\n' +
+            'Tes messages sont transmis directement à notre équipe support.\n\n' +
+            '🟠 **Statut :** En attente d’un membre du staff'
+          )
+          .setFooter({ text: 'PlayWise • Un seul ticket ouvert par personne' })
+          .setTimestamp()
+      ]
+    }).catch(() => {});
   }
 
   const embed = new EmbedBuilder()
-    .setColor(0x57F287)
+    .setColor(0x5865F2)
     .setAuthor({
-      name: message.author.tag || message.author.username,
+      name: message.author.username + ' • Membre',
       iconURL: message.author.displayAvatarURL()
     })
-    .setDescription(message.content || '*Message sans texte*')
-    .setFooter({ text: 'Message du membre • Répondez dans ce salon' })
+    .setDescription(message.content || '*Pièce jointe envoyée*')
+    .setFooter({ text: 'Message reçu en MP' })
     .setTimestamp();
 
   const files = [...message.attachments.values()].map(a => a.url);
@@ -227,20 +303,61 @@ async function relayStaffToUser(message, userId) {
   if (!user) return;
 
   const embed = new EmbedBuilder()
-    .setColor(0x5865F2)
+    .setColor(0x57F287)
     .setAuthor({
-      name: 'Support PlayWise • ' + message.author.username,
+      name: message.author.username + ' • Support PlayWise',
       iconURL: message.author.displayAvatarURL()
     })
-    .setDescription(message.content || '*Message sans texte*')
-    .setFooter({ text: 'Répondez simplement à ce MP pour continuer le ticket.' })
+    .setDescription(message.content || '*Pièce jointe envoyée*')
+    .setFooter({ text: 'Réponds directement à ce MP pour continuer' })
     .setTimestamp();
 
   const files = [...message.attachments.values()].map(a => a.url);
-
   await user.send({ embeds: [embed], files }).catch(async () => {
     await message.reply("❌ Impossible d'envoyer un MP à cet utilisateur.").catch(() => {});
   });
+}
+
+async function buildTranscript(channel) {
+  const fetched = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+  if (!fetched) return Buffer.from('Transcript indisponible.', 'utf8');
+
+  const lines = fetched.sort((a, b) => a.createdTimestamp - b.createdTimestamp).map(msg => {
+    const date = new Date(msg.createdTimestamp).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels' });
+    const text = msg.content || '';
+    const embedText = msg.embeds.map(e => [e.title, e.description].filter(Boolean).join(' — ')).filter(Boolean).join(' | ');
+    const attachments = [...msg.attachments.values()].map(a => a.url).join(' ');
+    return '[' + date + '] ' + (msg.author?.tag || msg.author?.username || 'Inconnu') + ': ' +
+      [text, embedText, attachments].filter(Boolean).join(' ');
+  });
+
+  return Buffer.from(lines.join('\n') || 'Aucun message.', 'utf8');
+}
+
+async function logClosedTicket(channel, data, closer, reason) {
+  const logChannel = await getOrCreateTicketLogChannel(channel.guild).catch(() => null);
+  if (!logChannel) return;
+
+  const transcript = await buildTranscript(channel);
+  const user = await client.users.fetch(data.userId).catch(() => null);
+
+  const embed = new EmbedBuilder()
+    .setColor(0xED4245)
+    .setTitle('📁 Ticket fermé')
+    .addFields(
+      { name: '👤 Membre', value: user ? user.username + ' (\\`' + data.userId + '\\`)' : '\\`' + data.userId + '\\`', inline: false },
+      { name: '📂 Sujet', value: ticketSubjectLabel(data.subject), inline: true },
+      { name: '🛡️ Pris en charge par', value: data.claimedBy ? '<@' + data.claimedBy + '>' : 'Personne', inline: true },
+      { name: '🔒 Fermé par', value: '<@' + closer.id + '>', inline: true },
+      { name: '📝 Raison', value: reason.slice(0, 1024), inline: false }
+    )
+    .setFooter({ text: 'PlayWise • Historique ticket' })
+    .setTimestamp();
+
+  await logChannel.send({
+    embeds: [embed],
+    files: [{ attachment: transcript, name: 'transcript-' + data.userId + '.txt' }]
+  }).catch(() => {});
 }
 
 const commands = [
@@ -343,31 +460,48 @@ client.on('guildCreate', async guild => {
 client.on('interactionCreate', async interaction => {
   try {
     if (interaction.isButton() && interaction.customId === 'claim_dm_ticket') {
-      const topic = interaction.channel?.topic || '';
-      if (!topic.startsWith('DM_TICKET:')) {
+      const data = parseTicketTopic(interaction.channel?.topic || '');
+      if (!data) {
         return interaction.reply({ content: '❌ Ce bouton fonctionne uniquement dans un ticket.', ephemeral: true });
       }
       if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageMessages)) {
         return interaction.reply({ content: '❌ Permission Gérer les messages requise.', ephemeral: true });
       }
+      if (data.claimedBy) {
+        return interaction.reply({ content: '❌ Ce ticket est déjà pris en charge par <@' + data.claimedBy + '>.' , ephemeral: true });
+      }
 
-      const userId = topic.slice('DM_TICKET:'.length);
-      const user = await client.users.fetch(userId).catch(() => null);
+      const user = await client.users.fetch(data.userId).catch(() => null);
+      await interaction.channel.setTopic(ticketTopic(data.userId, data.subject, interaction.user.id)).catch(() => {});
 
-      const claimed = new EmbedBuilder()
-        .setColor(0x57F287)
-        .setDescription('🙋 Ticket pris en charge par <@' + interaction.user.id + '>.')
-        .setTimestamp();
+      if (user) {
+        await interaction.update({
+          embeds: [buildTicketStaffEmbed(user, data.subject, interaction.user.id)],
+          components: [buildTicketActions(interaction.user.id)]
+        });
+      } else {
+        await interaction.reply({ content: '✅ Ticket pris en charge.', ephemeral: true });
+      }
 
-      await interaction.reply({ embeds: [claimed] });
+      await interaction.channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0x57F287)
+            .setDescription('✅ <@' + interaction.user.id + '> a pris en charge ce ticket.')
+            .setTimestamp()
+        ]
+      });
 
       if (user) {
         await user.send({
           embeds: [
             new EmbedBuilder()
               .setColor(0x57F287)
-              .setTitle('🙋 Ton ticket a été pris en charge')
-              .setDescription('**' + interaction.user.username + '** s’occupe maintenant de ta demande. Tu peux continuer à répondre ici.')
+              .setTitle('✅ Ton ticket est pris en charge')
+              .setDescription(
+                '**' + interaction.user.username + '** s’occupe maintenant de ta demande.\n\n' +
+                'Tu peux continuer à écrire directement ici.'
+              )
               .setFooter({ text: 'PlayWise • Support MP' })
               .setTimestamp()
           ]
@@ -377,29 +511,34 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isButton() && interaction.customId === 'ticket_user_info') {
-      const topic = interaction.channel?.topic || '';
-      if (!topic.startsWith('DM_TICKET:')) {
+      const data = parseTicketTopic(interaction.channel?.topic || '');
+      if (!data) {
         return interaction.reply({ content: '❌ Ce bouton fonctionne uniquement dans un ticket.', ephemeral: true });
       }
-      const userId = topic.slice('DM_TICKET:'.length);
-      const user = await client.users.fetch(userId).catch(() => null);
+
+      const user = await client.users.fetch(data.userId).catch(() => null);
       if (!user) return interaction.reply({ content: '❌ Utilisateur introuvable.', ephemeral: true });
 
-      const info = new EmbedBuilder()
-        .setColor(0x5865F2)
-        .setTitle('👤 Informations du membre')
-        .setThumbnail(user.displayAvatarURL({ size: 256 }))
-        .addFields(
-          { name: 'Pseudo', value: user.tag || user.username, inline: true },
-          { name: 'ID', value: '\`' + user.id + '\`', inline: true },
-          { name: 'Compte créé', value: '<t:' + Math.floor(user.createdTimestamp / 1000) + ':F>', inline: false }
-        );
-      return interaction.reply({ embeds: [info], ephemeral: true });
+      return interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setTitle('👤 Informations du membre')
+            .setThumbnail(user.displayAvatarURL({ size: 256 }))
+            .addFields(
+              { name: 'Pseudo', value: user.tag || user.username, inline: true },
+              { name: 'ID', value: '\\`' + user.id + '\\`', inline: true },
+              { name: 'Sujet', value: ticketSubjectLabel(data.subject), inline: false },
+              { name: 'Compte créé', value: '<t:' + Math.floor(user.createdTimestamp / 1000) + ':F>', inline: false }
+            )
+        ],
+        ephemeral: true
+      });
     }
 
     if (interaction.isButton() && interaction.customId === 'close_dm_ticket') {
-      const topic = interaction.channel?.topic || '';
-      if (!topic.startsWith('DM_TICKET:')) {
+      const data = parseTicketTopic(interaction.channel?.topic || '');
+      if (!data) {
         return interaction.reply({ content: '❌ Ce bouton fonctionne uniquement dans un ticket.', ephemeral: true });
       }
       if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageChannels)) {
@@ -413,8 +552,8 @@ client.on('interactionCreate', async interaction => {
       const reason = new TextInputBuilder()
         .setCustomId('close_reason')
         .setLabel('Raison de la fermeture')
-        .setPlaceholder('Ex. Problème résolu')
-        .setRequired(false)
+        .setPlaceholder('Ex. Demande résolue')
+        .setRequired(true)
         .setMaxLength(300)
         .setStyle(TextInputStyle.Paragraph);
 
@@ -423,39 +562,47 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isModalSubmit() && interaction.customId === 'close_dm_ticket_modal') {
-      const topic = interaction.channel?.topic || '';
-      if (!topic.startsWith('DM_TICKET:')) {
+      const data = parseTicketTopic(interaction.channel?.topic || '');
+      if (!data) {
         return interaction.reply({ content: '❌ Ce formulaire ne correspond pas à un ticket.', ephemeral: true });
       }
 
-      const userId = topic.slice('DM_TICKET:'.length);
       const reason = interaction.fields.getTextInputValue('close_reason') || 'Aucune raison précisée';
-      const user = await client.users.fetch(userId).catch(() => null);
-
-      if (user) {
-        const closed = new EmbedBuilder()
-          .setColor(0xED4245)
-          .setTitle('🔒 Ticket fermé')
-          .setDescription(
-            'Ton ticket PlayWise vient d’être fermé.\n\n' +
-            '**Raison :** ' + reason + '\n\n' +
-            'Si tu as besoin d’aide plus tard, tu peux simplement rouvrir un ticket.'
-          )
-          .setFooter({ text: 'PlayWise • Support MP' })
-          .setTimestamp();
-        await user.send({ embeds: [closed] }).catch(() => {});
-      }
+      const user = await client.users.fetch(data.userId).catch(() => null);
 
       await interaction.reply({
         embeds: [
           new EmbedBuilder()
             .setColor(0xED4245)
-            .setTitle('🔒 Ticket fermé')
-            .setDescription('Fermé par <@' + interaction.user.id + '>\n**Raison :** ' + reason)
+            .setTitle('🔒 Fermeture du ticket')
+            .setDescription(
+              'Ticket fermé par <@' + interaction.user.id + '>.\n\n' +
+              '**Raison :** ' + reason + '\n\n' +
+              'Le transcript est en cours d’archivage.'
+            )
             .setTimestamp()
         ]
       });
-      setTimeout(() => interaction.channel.delete('Ticket Support MP fermé').catch(() => {}), 4000);
+
+      if (user) {
+        await user.send({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0xED4245)
+              .setTitle('🔒 Ton ticket est fermé')
+              .setDescription(
+                'Ton ticket PlayWise vient d’être fermé par **' + interaction.user.username + '**.\n\n' +
+                '**Raison :** ' + reason + '\n\n' +
+                'Si tu as encore besoin d’aide, tu pourras ouvrir un nouveau ticket depuis le panneau support.'
+              )
+              .setFooter({ text: 'PlayWise • Support MP' })
+              .setTimestamp()
+          ]
+        }).catch(() => {});
+      }
+
+      await logClosedTicket(interaction.channel, data, interaction.user, reason);
+      setTimeout(() => interaction.channel.delete('Ticket Support MP fermé').catch(() => {}), 3500);
       return;
     }
 
@@ -469,27 +616,50 @@ client.on('interactionCreate', async interaction => {
       }
 
       const alreadyOpen = await findTicketChannel(guild, interaction.user.id);
-      const channel = await getOrCreateTicketChannel(guild, interaction.user);
+      if (alreadyOpen) {
+        const existingData = parseTicketTopic(alreadyOpen.topic || '');
+        await interaction.user.send({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0xFEE75C)
+              .setTitle('🎫 Tu as déjà un ticket ouvert')
+              .setDescription(
+                'Ton ticket est toujours actif. Continue simplement la conversation ici en MP.\n\n' +
+                '**Sujet :** ' + ticketSubjectLabel(existingData?.subject || 'autre')
+              )
+              .setFooter({ text: 'PlayWise • Support MP' })
+          ]
+        }).catch(() => {});
 
-      const welcome = new EmbedBuilder()
-        .setColor(0x5865F2)
-        .setAuthor({ name: 'PlayWise • Support MP', iconURL: client.user.displayAvatarURL() })
-        .setTitle('Support PlayWise')
-        .setDescription(
-          'Bonjour **' + interaction.user.username + '** 👋\n\n' +
-          'Votre demande a bien été prise en compte.\n\n' +
-          '**Sujet :** ' + subjectText + '\n\n' +
-          'Décrivez maintenant votre demande directement dans cette conversation. Vous pouvez envoyer du texte, des captures ou des fichiers.\n\n' +
-          '**Propulsé par l’équipe PlayWise** 🔥'
-        )
-        .setFooter({ text: 'PlayWise • Support privé' })
-        .setTimestamp();
+        return interaction.reply({
+          content: '⚠️ Tu as déjà un ticket ouvert. Continue directement dans tes MP avec le bot.',
+          ephemeral: true
+        });
+      }
+
+      const channel = await getOrCreateTicketChannel(guild, interaction.user, subject);
 
       let dmOk = true;
-      await interaction.user.send({ embeds: [welcome] }).catch(() => { dmOk = false; });
+      await interaction.user.send({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setAuthor({ name: 'PlayWise • Support', iconURL: client.user.displayAvatarURL() })
+            .setTitle('🎫 Ticket créé avec succès')
+            .setDescription(
+              'Bonjour **' + interaction.user.username + '** 👋\n\n' +
+              'Ta demande a bien été prise en compte.\n\n' +
+              '**Sujet :** ' + subjectText + '\n' +
+              '🟠 **Statut :** En attente d’un membre du staff\n\n' +
+              'Explique maintenant ta demande **directement ici en MP**. Tu peux envoyer du texte, des captures ou des fichiers.'
+            )
+            .setFooter({ text: 'PlayWise • Support privé' })
+            .setTimestamp()
+        ]
+      }).catch(() => { dmOk = false; });
 
       if (!dmOk) {
-        if (!alreadyOpen) await channel.delete('MP fermés lors de la création').catch(() => {});
+        await channel.delete('MP fermés lors de la création').catch(() => {});
         return interaction.reply({
           content: '⚠️ Je ne peux pas t’envoyer de MP. Active les messages privés du serveur puis réessaie.',
           ephemeral: true
@@ -500,15 +670,13 @@ client.on('interactionCreate', async interaction => {
         embeds: [
           new EmbedBuilder()
             .setColor(0x5865F2)
-            .setTitle('📌 Sujet du ticket')
-            .setDescription(subjectText)
-            .addFields({ name: 'Ouvert depuis', value: interaction.channel.toString(), inline: true })
+            .setDescription('📨 Ticket ouvert depuis le panneau support. Sujet : **' + subjectText + '**')
             .setTimestamp()
         ]
       });
 
       return interaction.reply({
-        content: '✅ Ta demande a bien été prise en compte ! **Regarde tes MP avec PlayWise** pour continuer.',
+        content: '✅ Ticket créé ! Je viens de t’envoyer un **MP**. Continue la discussion là-bas.',
         ephemeral: true
       });
     }
@@ -519,44 +687,40 @@ client.on('interactionCreate', async interaction => {
         return interaction.reply({ content: '❌ Ce bouton doit être utilisé depuis un serveur.', ephemeral: true });
       }
 
-      const channel = await getOrCreateTicketChannel(guild, interaction.user);
+      const alreadyOpen = await findTicketChannel(guild, interaction.user.id);
+      if (alreadyOpen) {
+        return interaction.reply({ content: '⚠️ Tu as déjà un ticket ouvert. Continue dans tes MP.', ephemeral: true });
+      }
 
-      const welcome = new EmbedBuilder()
-        .setColor(0x5865F2)
-        .setAuthor({ name: 'PlayWise • Support MP', iconURL: client.user.displayAvatarURL() })
-        .setTitle('👋 Bienvenue dans ton ticket')
-        .setDescription(
-          'Ton ticket est maintenant **ouvert**.\n\n' +
-          'Décris ton problème avec le plus de détails possible directement dans cette conversation. Tes messages seront transmis au staff PlayWise et leurs réponses arriveront ici.\n\n' +
-          '📎 Tu peux aussi envoyer des captures ou fichiers.'
-        )
-        .setFooter({ text: 'PlayWise • Un seul ticket par personne' })
-        .setTimestamp();
-
+      const channel = await getOrCreateTicketChannel(guild, interaction.user, 'autre');
       let dmOk = true;
-      await interaction.user.send({ embeds: [welcome] }).catch(() => { dmOk = false; });
+
+      await interaction.user.send({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0x5865F2)
+            .setTitle('🎫 Ticket créé')
+            .setDescription(
+              'Ton ticket est ouvert. Décris ta demande directement ici en MP.\n\n' +
+              '🟠 **Statut :** En attente d’un membre du staff'
+            )
+            .setFooter({ text: 'PlayWise • Support MP' })
+            .setTimestamp()
+        ]
+      }).catch(() => { dmOk = false; });
 
       if (!dmOk) {
+        await channel.delete('MP fermés lors de la création').catch(() => {});
         return interaction.reply({
-          content: '⚠️ Ton ticket a été créé, mais je ne peux pas t’envoyer de MP. Active les messages privés provenant des membres du serveur puis réessaie.',
+          content: '⚠️ Active tes messages privés puis réessaie.',
           ephemeral: true
         });
       }
 
-      await interaction.reply({
-        content: '✅ Ton ticket est créé ! Je viens de t’envoyer un **message privé**. Continue la discussion dans tes MP.',
+      return interaction.reply({
+        content: '✅ Ticket créé ! Regarde tes MP avec le bot.',
         ephemeral: true
       });
-
-      await channel.send({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0x5865F2)
-            .setDescription('📨 Ticket ouvert depuis le panneau support par <@' + interaction.user.id + '>.')
-            .setTimestamp()
-        ]
-      });
-      return;
     }
 
     if (!interaction.isChatInputCommand()) return;
