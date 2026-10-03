@@ -302,14 +302,21 @@ async function relayStaffToUser(message, userId) {
   const user = await client.users.fetch(userId).catch(() => null);
   if (!user) return;
 
+  const member = message.member || await message.guild?.members.fetch(message.author.id).catch(() => null);
+  const highestRole = member?.roles?.highest && member.roles.highest.id !== message.guild?.roles.everyone.id
+    ? member.roles.highest.name
+    : 'Staff';
+
+  const staffName = member?.displayName || message.author.username;
+
   const embed = new EmbedBuilder()
     .setColor(0x57F287)
     .setAuthor({
-      name: message.author.username + ' • Support PlayWise',
+      name: staffName + ' • ' + highestRole,
       iconURL: message.author.displayAvatarURL()
     })
     .setDescription(message.content || '*Pièce jointe envoyée*')
-    .setFooter({ text: 'Réponds directement à ce MP pour continuer' })
+    .setFooter({ text: 'PlayWise • Support MP' })
     .setTimestamp();
 
   const files = [...message.attachments.values()].map(a => a.url);
