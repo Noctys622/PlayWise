@@ -1,6 +1,7 @@
 const http = require('http');
 const {
   Client,
+  Events,
   GatewayIntentBits,
   ActivityType,
   EmbedBuilder,
@@ -26,18 +27,32 @@ const client = new Client({
     GatewayIntentBits.DirectMessages,
     GatewayIntentBits.MessageContent
   ],
-  partials: [Partials.Channel]
+  partials: [Partials.Channel],
+  presence: {
+    activities: [{ name: '/help • PlayWise', type: ActivityType.Playing }],
+    status: 'online'
+  }
 });
 
 const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'application/json' });
+  const ready = client.isReady();
+  const healthCheck = req.url?.split('?')[0] === '/healthz';
+  res.writeHead(healthCheck && !ready ? 503 : 200, {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store'
+  });
   res.end(JSON.stringify({
-    ok: true,
+    ok: healthCheck ? ready : true,
+    version: 'discord-recovery-v1',
     discord: client.isReady() ? 'online' : 'offline',
     guilds: client.isReady() ? client.guilds.cache.size : 0
   }));
 });
-server.listen(PORT, () => console.log('[WEB] Port', PORT));
+server.listen(PORT, '0.0.0.0', () => console.log('[WEB] Port', PORT));
+server.on('error', error => {
+  console.error('[WEB]', error.message);
+  shutdown(1);
+});
 
 
 const TICKET_CATEGORY_NAME = '📩 Tickets MP';
@@ -301,7 +316,7 @@ const commands = [
   new SlashCommandBuilder().setName('ticketinfo').setDescription('Affiche les infos du ticket actuel')
 ].map(c => c.toJSON());
 
-client.once('ready', async () => {
+client.once(Events.ClientReady, async () => {
   console.log('[DISCORD] Connecté en tant que', client.user.tag);
   for (const guild of client.guilds.cache.values()) {
     try { await guild.members.me?.setNickname('PlayWise'); } catch {}
@@ -887,16 +902,89 @@ client.on('messageCreate', async message => {
   }
 });
 
-client.on('error', e => console.error('[DISCORD]', e));
+// discord.js handles normal gateway reconnections. Only restart if recovery stalls.
+let stopping = false;
+let retryTimer;
+let loginInProgress = false;
+let attempts = 0;
+let offlineSince = Date.now();
 
-const token = process.env.DISCORD_BOT_TOKEN;
-if (!token) {
-  console.error('[DISCORD] Variable DISCORD_BOT_TOKEN manquante.');
-} else {
-  client.login(token).catch(e => console.error('[DISCORD] Connexion impossible:', e.message));
+function shutdown(code) {
+  if (stopping) return;
+  stopping = true;
+  clearTimeout(retryTimer);
+  clearInterval(connectionWatchdog);
+  const deadline = setTimeout(() => process.exit(code), 5000);
+  deadline.unref();
+  Promise.resolve(client.destroy()).catch(() => {}).finally(() => {
+    server.close(() => process.exit(code));
+  });
 }
 
-process.on('SIGTERM', () => {
-  try { client.destroy(); } catch {}
-  server.close(() => process.exit(0));
+client.on(Events.ClientReady, () => {
+  offlineSince = null;
+  attempts = 0;
 });
+client.on(Events.ShardReconnecting, shardId => {
+  offlineSince ??= Date.now();
+  console.warn('[DISCORD] Reconnexion du shard', shardId);
+});
+client.on(Events.ShardDisconnect, (event, shardId) => {
+  offlineSince ??= Date.now();
+  console.warn('[DISCORD] Déconnexion du shard', shardId, 'code', event.code);
+});
+client.on(Events.ShardResume, shardId => {
+  console.log('[DISCORD] Connexion rétablie du shard', shardId);
+});
+client.on(Events.ShardError, error => console.error('[DISCORD] Gateway:', error.message));
+client.on(Events.Error, error => console.error('[DISCORD]', error.message));
+client.on(Events.Invalidated, () => {
+  console.error('[DISCORD] Session invalidée, redémarrage du processus.');
+  shutdown(1);
+});
+
+const connectionWatchdog = setInterval(() => {
+  if (stopping) return;
+  if (client.isReady()) {
+    offlineSince = null;
+    return;
+  }
+  offlineSince ??= Date.now();
+  if (Date.now() - offlineSince >= 180000) {
+    console.error('[DISCORD] Hors ligne depuis 3 minutes, redémarrage du processus.');
+    shutdown(1);
+  }
+}, 15000);
+connectionWatchdog.unref();
+
+const token = process.env.DISCORD_BOT_TOKEN;
+async function connectDiscord() {
+  if (stopping || loginInProgress || client.isReady()) return;
+  loginInProgress = true;
+  try {
+    await client.login(token);
+    attempts = 0;
+  } catch (error) {
+    console.error('[DISCORD] Connexion impossible:', error.message);
+    if (['TokenInvalid', 'DisallowedIntents', 'InvalidIntents'].includes(error.code)) {
+      console.error('[DISCORD] Vérifiez le token et les intents dans la configuration.');
+      shutdown(1);
+      return;
+    }
+    const delay = Math.min(5000 * (2 ** Math.min(attempts++, 4)), 60000);
+    console.warn('[DISCORD] Nouvelle tentative dans', delay / 1000, 'secondes.');
+    if (!stopping) retryTimer = setTimeout(connectDiscord, delay);
+  } finally {
+    loginInProgress = false;
+  }
+}
+
+process.on('SIGTERM', () => shutdown(0));
+process.on('SIGINT', () => shutdown(0));
+
+if (!token) {
+  console.error('[DISCORD] Variable DISCORD_BOT_TOKEN manquante.');
+  shutdown(1);
+} else {
+  void connectDiscord();
+}
