@@ -193,6 +193,44 @@ function buildTicketActions(claimedBy = null) {
   );
 }
 
+function buildTicketUserActions(channel) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('close_dm_ticket:' + channel.id)
+      .setLabel('Fermer le ticket')
+      .setEmoji('🔒')
+      .setStyle(ButtonStyle.Danger)
+  );
+}
+
+async function resolveCloseTicket(interaction, channelId) {
+  if (!channelId) return interaction.channel;
+  const guild = await getMainGuild();
+  return guild?.channels.cache.get(channelId) ||
+    await guild?.channels.fetch(channelId).catch(() => null) || null;
+}
+
+function canCloseTicket(interaction, channel, data) {
+  return interaction.user.id === data.userId ||
+    (interaction.guildId === channel.guild.id &&
+      Boolean(interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)));
+}
+
+function showCloseTicketModal(interaction, channel) {
+  const modal = new ModalBuilder()
+    .setCustomId('close_dm_ticket_modal:' + channel.id)
+    .setTitle('Fermer le ticket');
+  const reason = new TextInputBuilder()
+    .setCustomId('close_reason')
+    .setLabel('Raison de la fermeture')
+    .setPlaceholder('Ex. Demande résolue')
+    .setRequired(true)
+    .setMaxLength(300)
+    .setStyle(TextInputStyle.Paragraph);
+  modal.addComponents(new ActionRowBuilder().addComponents(reason));
+  return interaction.showModal(modal);
+}
+
 function buildTicketStaffEmbed(user, subject = 'autre', claimedBy = null) {
   return new EmbedBuilder()
     .setColor(claimedBy ? 0x57F287 : 0xFEE75C)
@@ -278,7 +316,8 @@ async function relayDmToTicket(message) {
           )
           .setFooter({ text: 'PlayWise • Un seul ticket ouvert par personne' })
           .setTimestamp()
-      ]
+      ],
+      components: [buildTicketUserActions(channel)]
     }).catch(() => {});
   }
 
@@ -320,7 +359,7 @@ async function relayStaffToUser(message, userId) {
     .setTimestamp();
 
   const files = [...message.attachments.values()].map(a => a.url);
-  await user.send({ embeds: [embed], files }).catch(async () => {
+  await user.send({ embeds: [embed], files, components: [buildTicketUserActions(message.channel)] }).catch(async () => {
     await message.reply("❌ Impossible d'envoyer un MP à cet utilisateur.").catch(() => {});
   });
 }
@@ -543,38 +582,32 @@ client.on('interactionCreate', async interaction => {
       });
     }
 
-    if (interaction.isButton() && interaction.customId === 'close_dm_ticket') {
-      const data = parseTicketTopic(interaction.channel?.topic || '');
+    if (interaction.isButton() && (interaction.customId === 'close_dm_ticket' || interaction.customId.startsWith('close_dm_ticket:'))) {
+      const channel = await resolveCloseTicket(interaction, interaction.customId.split(':')[1]);
+      const data = parseTicketTopic(channel?.topic || '');
       if (!data) {
-        return interaction.reply({ content: '❌ Ce bouton fonctionne uniquement dans un ticket.', ephemeral: true });
+        return interaction.reply({ content: '❌ Ce ticket est déjà fermé ou introuvable.', ephemeral: true });
       }
-      if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageChannels)) {
-        return interaction.reply({ content: '❌ Permission Gérer les salons requise.', ephemeral: true });
+      if (!canCloseTicket(interaction, channel, data)) {
+        return interaction.reply({ content: '❌ Seuls l’auteur du ticket et le staff peuvent le fermer.', ephemeral: true });
       }
-
-      const modal = new ModalBuilder()
-        .setCustomId('close_dm_ticket_modal')
-        .setTitle('Fermer le ticket');
-
-      const reason = new TextInputBuilder()
-        .setCustomId('close_reason')
-        .setLabel('Raison de la fermeture')
-        .setPlaceholder('Ex. Demande résolue')
-        .setRequired(true)
-        .setMaxLength(300)
-        .setStyle(TextInputStyle.Paragraph);
-
-      modal.addComponents(new ActionRowBuilder().addComponents(reason));
-      return interaction.showModal(modal);
+      return showCloseTicketModal(interaction, channel);
     }
 
-    if (interaction.isModalSubmit() && interaction.customId === 'close_dm_ticket_modal') {
-      const data = parseTicketTopic(interaction.channel?.topic || '');
+    if (interaction.isModalSubmit() && (interaction.customId === 'close_dm_ticket_modal' || interaction.customId.startsWith('close_dm_ticket_modal:'))) {
+      const channel = await resolveCloseTicket(interaction, interaction.customId.split(':')[1]);
+      const data = parseTicketTopic(channel?.topic || '');
       if (!data) {
         return interaction.reply({ content: '❌ Ce formulaire ne correspond pas à un ticket.', ephemeral: true });
       }
 
-      const reason = interaction.fields.getTextInputValue('close_reason') || 'Aucune raison précisée';
+      if (!canCloseTicket(interaction, channel, data)) {
+        return interaction.reply({ content: '❌ Seuls l’auteur du ticket et le staff peuvent le fermer.', ephemeral: true });
+      }
+      const reason = interaction.fields.getTextInputValue('close_reason').trim();
+      if (!reason || reason.length > 300) {
+        return interaction.reply({ content: '❌ Indique une raison de fermeture (1 à 300 caractères).', ephemeral: true });
+      }
       const user = await client.users.fetch(data.userId).catch(() => null);
 
       await interaction.reply({
@@ -608,8 +641,8 @@ client.on('interactionCreate', async interaction => {
         }).catch(() => {});
       }
 
-      await logClosedTicket(interaction.channel, data, interaction.user, reason);
-      setTimeout(() => interaction.channel.delete('Ticket Support MP fermé').catch(() => {}), 3500);
+      await logClosedTicket(channel, data, interaction.user, reason);
+      setTimeout(() => channel.delete('Ticket Support MP fermé').catch(() => {}), 3500);
       return;
     }
 
@@ -657,7 +690,8 @@ client.on('interactionCreate', async interaction => {
                 '**Sujet :** ' + ticketSubjectLabel(existingData?.subject || 'autre')
               )
               .setFooter({ text: 'PlayWise • Support MP' })
-          ]
+          ],
+          components: [buildTicketUserActions(alreadyOpen)]
         }).catch(() => {});
 
         return interaction.reply({
@@ -684,7 +718,8 @@ client.on('interactionCreate', async interaction => {
             )
             .setFooter({ text: 'PlayWise • Support privé' })
             .setTimestamp()
-        ]
+        ],
+        components: [buildTicketUserActions(channel)]
       }).catch(() => { dmOk = false; });
 
       if (!dmOk) {
@@ -1040,21 +1075,17 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.commandName === 'close') {
-      const topic = interaction.channel?.topic || '';
-      if (!topic.startsWith('DM_TICKET:')) {
+      const channel = interaction.channel;
+      const data = parseTicketTopic(channel?.topic || '');
+      if (!data) {
         return interaction.reply({ content: '❌ Cette commande doit être utilisée dans un ticket MP.', ephemeral: true });
       }
-      if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageChannels)) {
-        return interaction.reply({ content: '❌ Permission Gérer les salons requise.', ephemeral: true });
+      if (!canCloseTicket(interaction, channel, data)) {
+        return interaction.reply({ content: '❌ Seuls l’auteur du ticket et le staff peuvent le fermer.', ephemeral: true });
       }
-      const userId = topic.slice('DM_TICKET:'.length);
-      const user = await client.users.fetch(userId).catch(() => null);
-      if (user) {
-        await user.send('✅ Ton ticket PlayWise a été fermé par le staff. Tu peux renvoyer un MP au bot pour en ouvrir un nouveau.').catch(() => {});
-      }
-      await interaction.reply('🔒 Ticket fermé. Suppression du salon dans 3 secondes…');
-      setTimeout(() => interaction.channel.delete('Ticket MP fermé').catch(() => {}), 3000);
+      return showCloseTicketModal(interaction, channel);
     }
+
   } catch (e) {
     console.error('[COMMAND ERROR]', e);
     if (interaction.replied) {
