@@ -1,4 +1,5 @@
 const http = require('http');
+const { withTicketLock, fetchTranscriptMessages } = require('./ticket-core');
 const {
   Client,
   Events,
@@ -21,6 +22,7 @@ const {
 
 const PORT = process.env.PORT || 3000;
 const client = new Client({
+  allowedMentions: { parse: [], repliedUser: false },
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
@@ -43,7 +45,7 @@ const server = http.createServer((req, res) => {
   });
   res.end(JSON.stringify({
     ok: healthCheck ? ready : true,
-    version: 'discord-recovery-v1',
+    version: 'tickets-v3',
     discord: client.isReady() ? 'online' : 'offline',
     guilds: client.isReady() ? client.guilds.cache.size : 0
   }));
@@ -93,7 +95,7 @@ async function getMainGuild() {
     const guild = client.guilds.cache.get(configured) || await client.guilds.fetch(configured).catch(() => null);
     if (guild) return guild;
   }
-  return client.guilds.cache.first() || null;
+  return client.guilds.cache.size === 1 ? client.guilds.cache.first() : null;
 }
 
 function getStaffRole(guild) {
@@ -105,29 +107,38 @@ function getStaffRole(guild) {
     .find(r => /staff|support|mod[eé]rateur|admin/i.test(r.name)) || null;
 }
 
+function isTicketStaff(member, guild) {
+  if (!member || !guild) return false;
+  const permissions = member.permissions;
+  const role = getStaffRole(guild);
+  return Boolean(permissions?.has(PermissionFlagsBits.ManageChannels) ||
+    (role && member.roles?.cache?.has(role.id)));
+}
+
+function ticketOverwrites(guild) {
+  const allow = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages,
+    PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles,
+    PermissionFlagsBits.EmbedLinks];
+  const overwrites = [
+    { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+    { id: client.user.id, allow: [...allow, PermissionFlagsBits.ManageChannels] }
+  ];
+  const role = getStaffRole(guild);
+  if (role) overwrites.push({ id: role.id, allow });
+  return overwrites;
+}
+
 async function getOrCreateTicketCategory(guild) {
+  return withTicketLock('category:' + guild.id, () => createTicketCategory(guild));
+}
+
+async function createTicketCategory(guild) {
   let category = guild.channels.cache.find(
     c => c.type === ChannelType.GuildCategory && c.name === TICKET_CATEGORY_NAME
   );
 
   if (!category) {
-    const staffRole = getStaffRole(guild);
-    const overwrites = [{
-      id: guild.roles.everyone.id,
-      deny: [PermissionFlagsBits.ViewChannel]
-    }];
-
-    if (staffRole) {
-      overwrites.push({
-        id: staffRole.id,
-        allow: [
-          PermissionFlagsBits.ViewChannel,
-          PermissionFlagsBits.SendMessages,
-          PermissionFlagsBits.ReadMessageHistory,
-          PermissionFlagsBits.AttachFiles
-        ]
-      });
-    }
+    const overwrites = ticketOverwrites(guild);
 
     category = await guild.channels.create({
       name: TICKET_CATEGORY_NAME,
@@ -140,6 +151,10 @@ async function getOrCreateTicketCategory(guild) {
 }
 
 async function getOrCreateTicketLogChannel(guild) {
+  return withTicketLock('logs:' + guild.id, () => createTicketLogChannel(guild));
+}
+
+async function createTicketLogChannel(guild) {
   const category = await getOrCreateTicketCategory(guild);
   let channel = guild.channels.cache.find(
     c => c.type === ChannelType.GuildText && c.name === TICKET_LOG_CHANNEL_NAME && c.parentId === category.id
@@ -150,7 +165,8 @@ async function getOrCreateTicketLogChannel(guild) {
       name: TICKET_LOG_CHANNEL_NAME,
       type: ChannelType.GuildText,
       parent: category.id,
-      topic: 'Logs des tickets MP PlayWise'
+      topic: 'Logs des tickets MP PlayWise',
+      permissionOverwrites: ticketOverwrites(guild)
     });
   }
 
@@ -212,8 +228,7 @@ async function resolveCloseTicket(interaction, channelId) {
 
 function canCloseTicket(interaction, channel, data) {
   return interaction.user.id === data.userId ||
-    (interaction.guildId === channel.guild.id &&
-      Boolean(interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)));
+    (interaction.guildId === channel.guild.id && isTicketStaff(interaction.member, channel.guild));
 }
 
 function showCloseTicketModal(interaction, channel) {
@@ -243,7 +258,7 @@ function buildTicketStaffEmbed(user, subject = 'autre', claimedBy = null) {
     )
     .addFields(
       { name: '👤 Membre', value: '<@' + user.id + '>', inline: true },
-      { name: '🆔 ID', value: '\\`' + user.id + '\\`', inline: true },
+      { name: '🆔 ID', value: '`' + user.id + '`', inline: true },
       { name: '📂 Sujet', value: ticketSubjectLabel(subject), inline: false },
       { name: '📌 Statut', value: claimedBy ? '🟢 Pris en charge' : '🟠 En attente d’un membre du staff', inline: true },
       { name: '🛡️ Responsable', value: claimedBy ? '<@' + claimedBy + '>' : 'Aucun', inline: true }
@@ -257,24 +272,7 @@ async function getOrCreateTicketChannel(guild, user, subject = 'autre') {
   if (channel) return channel;
 
   const category = await getOrCreateTicketCategory(guild);
-  const staffRole = getStaffRole(guild);
-
-  const overwrites = [{
-    id: guild.roles.everyone.id,
-    deny: [PermissionFlagsBits.ViewChannel]
-  }];
-
-  if (staffRole) {
-    overwrites.push({
-      id: staffRole.id,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-        PermissionFlagsBits.AttachFiles
-      ]
-    });
-  }
+  const overwrites = ticketOverwrites(guild);
 
   channel = await guild.channels.create({
     name: safeChannelName(user.username, user.id),
@@ -284,10 +282,15 @@ async function getOrCreateTicketChannel(guild, user, subject = 'autre') {
     permissionOverwrites: overwrites
   });
 
-  await channel.send({
-    embeds: [buildTicketStaffEmbed(user, subject)],
-    components: [buildTicketActions()]
-  });
+  try {
+    await channel.send({
+      embeds: [buildTicketStaffEmbed(user, subject)],
+      components: [buildTicketActions()]
+    });
+  } catch (error) {
+    await channel.delete('Création de ticket incomplète').catch(() => {});
+    throw error;
+  }
 
   return channel;
 }
@@ -297,6 +300,9 @@ async function relayDmToTicket(message) {
   if (!guild) {
     return message.reply("❌ Aucun serveur n'est configuré pour recevoir les tickets.");
   }
+
+  const member = await guild.members.fetch(message.author.id).catch(() => null);
+  if (!member) return message.reply('❌ Rejoins le serveur PlayWise pour contacter son support.');
 
   const existing = await findTicketChannel(guild, message.author.id);
   const channel = await getOrCreateTicketChannel(guild, message.author, 'autre');
@@ -359,19 +365,22 @@ async function relayStaffToUser(message, userId) {
     .setTimestamp();
 
   const files = [...message.attachments.values()].map(a => a.url);
-  await user.send({ embeds: [embed], files, components: [buildTicketUserActions(message.channel)] }).catch(async () => {
-    await message.reply("❌ Impossible d'envoyer un MP à cet utilisateur.").catch(() => {});
-  });
+  try {
+    await user.send({ embeds: [embed], files, components: [buildTicketUserActions(message.channel)] });
+    await message.react('✅').catch(() => {});
+  } catch {
+    await message.reply("❌ Message non transmis : ce membre a fermé ses MP ou le fichier est trop volumineux.").catch(() => {});
+  }
 }
 
 async function buildTranscript(channel) {
-  const fetched = await channel.messages.fetch({ limit: 100 }).catch(() => null);
-  if (!fetched) return Buffer.from('Transcript indisponible.', 'utf8');
+  const fetched = await fetchTranscriptMessages(channel);
 
   const lines = fetched.sort((a, b) => a.createdTimestamp - b.createdTimestamp).map(msg => {
     const date = new Date(msg.createdTimestamp).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels' });
     const text = msg.content || '';
-    const embedText = msg.embeds.map(e => [e.title, e.description].filter(Boolean).join(' — ')).filter(Boolean).join(' | ');
+    const embedText = msg.embeds.map(e => [e.author?.name, e.title, e.description,
+      ...(e.fields || []).map(f => f.name + ': ' + f.value)].filter(Boolean).join(' — ')).filter(Boolean).join(' | ');
     const attachments = [...msg.attachments.values()].map(a => a.url).join(' ');
     return '[' + date + '] ' + (msg.author?.tag || msg.author?.username || 'Inconnu') + ': ' +
       [text, embedText, attachments].filter(Boolean).join(' ');
@@ -381,8 +390,7 @@ async function buildTranscript(channel) {
 }
 
 async function logClosedTicket(channel, data, closer, reason) {
-  const logChannel = await getOrCreateTicketLogChannel(channel.guild).catch(() => null);
-  if (!logChannel) return;
+  const logChannel = await getOrCreateTicketLogChannel(channel.guild);
 
   const transcript = await buildTranscript(channel);
   const user = await client.users.fetch(data.userId).catch(() => null);
@@ -391,7 +399,7 @@ async function logClosedTicket(channel, data, closer, reason) {
     .setColor(0xED4245)
     .setTitle('📁 Ticket fermé')
     .addFields(
-      { name: '👤 Membre', value: user ? user.username + ' (\\`' + data.userId + '\\`)' : '\\`' + data.userId + '\\`', inline: false },
+      { name: '👤 Membre', value: user ? user.username + ' (`' + data.userId + '`)' : '`' + data.userId + '`', inline: false },
       { name: '📂 Sujet', value: ticketSubjectLabel(data.subject), inline: true },
       { name: '🛡️ Pris en charge par', value: data.claimedBy ? '<@' + data.claimedBy + '>' : 'Personne', inline: true },
       { name: '🔒 Fermé par', value: '<@' + closer.id + '>', inline: true },
@@ -402,8 +410,72 @@ async function logClosedTicket(channel, data, closer, reason) {
 
   await logChannel.send({
     embeds: [embed],
-    files: [{ attachment: transcript, name: 'transcript-' + data.userId + '.txt' }]
-  }).catch(() => {});
+    files: [{ attachment: transcript, name: 'transcript-' + channel.id + '.txt' }]
+  });
+}
+
+async function openTicket(interaction, subject, description = '') {
+  const guild = interaction.guild;
+  if (!guild) return interaction.editReply({ content: '❌ Ouvre ton ticket depuis le serveur.' });
+  const existing = await findTicketChannel(guild, interaction.user.id);
+  if (existing) {
+    await interaction.user.send({ content: '🎫 Ton ticket est déjà ouvert. Continue la conversation ici.',
+      components: [buildTicketUserActions(existing)] });
+    return interaction.editReply({ content: '🎫 Tu as déjà un ticket ouvert. Retrouve-le dans tes MP.' });
+  }
+  // Check DMs before creating the staff channel to avoid orphan tickets.
+  let dm;
+  try {
+    dm = await interaction.user.send({ embeds: [new EmbedBuilder().setColor(0x5865F2)
+      .setTitle('📩 Ouverture de ton ticket')
+      .setDescription('Nous préparons ta conversation avec le support PlayWise.')] });
+  } catch {
+    return interaction.editReply({ content: '⚠️ Active les messages privés pour ce serveur, puis réessaie.' });
+  }
+  const channel = await getOrCreateTicketChannel(guild, interaction.user, subject);
+  try {
+    if (description) await channel.send({ embeds: [new EmbedBuilder().setColor(0x5865F2)
+      .setAuthor({ name: interaction.user.username + ' • Demande initiale', iconURL: interaction.user.displayAvatarURL() })
+      .setDescription(description).setTimestamp()] });
+    await dm.edit({ embeds: [new EmbedBuilder().setColor(0x5865F2)
+      .setAuthor({ name: 'PlayWise • Support privé', iconURL: client.user.displayAvatarURL() })
+      .setTitle('🎫 Ton ticket est ouvert')
+      .setDescription('**Catégorie :** ' + ticketSubjectLabel(subject) +
+        '\n**Statut :** En attente du staff.\n\nTa demande a été transmise. Continue à écrire ici : texte, captures et fichiers sont envoyés au support.')
+      .setFooter({ text: 'PlayWise • Tu peux fermer le ticket avec le bouton ci-dessous' }).setTimestamp()],
+      components: [buildTicketUserActions(channel)] });
+  } catch (error) {
+    await channel.delete('Ouverture incomplète').catch(() => {});
+    throw error;
+  }
+  return interaction.editReply({ content: '✅ Ticket ouvert ! Clique ci-dessous pour continuer en MP.',
+    components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link)
+      .setLabel('Ouvrir la conversation').setURL('https://discord.com/channels/@me/' + dm.channelId))] });
+}
+
+function buildTicketPanel() {
+      const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setAuthor({ name: 'PlayWise • Support', iconURL: client.user.displayAvatarURL() })
+        .setTitle('Besoin d’aide ?')
+        .setDescription(
+          'Notre équipe est là pour t’aider.\n\n' +
+          '**1.** Ouvre un ticket avec le bouton ci-dessous.\n' +
+          '**2.** Choisis une catégorie et décris ta demande.\n' +
+          '**3.** Continue la conversation en **message privé** avec le bot.\n\n' +
+          'Tu peux joindre des captures et fermer ton ticket une fois le problème résolu.'
+        )
+        .setFooter({ text: 'PlayWise • Support' });
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('open_ticket_categories')
+          .setLabel('Créer un ticket')
+          .setEmoji('🎫')
+          .setStyle(ButtonStyle.Primary)
+      );
+
+      return { embeds: [embed], components: [row] };
 }
 
 const commands = [
@@ -477,7 +549,27 @@ const commands = [
     .addStringOption(o => o.setName('message').setDescription('Message').setRequired(true)),
   new SlashCommandBuilder().setName('membercount').setDescription('Affiche le nombre de membres'),
   new SlashCommandBuilder().setName('ticketinfo').setDescription('Affiche les infos du ticket actuel')
-].map(c => c.toJSON());
+].map(c => c.setDMPermission(false).toJSON());
+
+async function refreshTicketPanels(guild) {
+  for (const channel of guild.channels.cache.values()) {
+    if (channel.type !== ChannelType.GuildText || !channel.viewable ||
+        !channel.permissionsFor(guild.members.me)?.has(PermissionFlagsBits.ReadMessageHistory)) continue;
+    try {
+      const messages = await channel.messages.fetch({ limit: 100 });
+      for (const message of messages.values()) {
+        if (message.author.id !== client.user.id) continue;
+        if (message.components.some(row => row.components.some(button =>
+          button.customId === 'open_ticket_categories' || button.customId === 'open_dm_ticket'))) {
+          await message.edit(buildTicketPanel());
+          console.log('[TICKETS] Panneau actualisé dans', channel.name);
+        }
+      }
+    } catch (error) {
+      console.warn('[TICKETS] Panneau non actualisé dans', channel.name, ':', error.message);
+    }
+  }
+}
 
 client.once(Events.ClientReady, async () => {
   console.log('[DISCORD] Connecté en tant que', client.user.tag);
@@ -493,6 +585,7 @@ client.once(Events.ClientReady, async () => {
     try {
       await guild.commands.set(commands);
       console.log('[COMMANDS] Enregistrées sur', guild.name);
+      await refreshTicketPanels(guild);
     } catch (e) {
       console.error('[COMMANDS]', e.message);
     }
@@ -503,31 +596,30 @@ client.on('guildCreate', async guild => {
   try { await guild.commands.set(commands); } catch (e) { console.error(e.message); }
 });
 
-client.on('interactionCreate', async interaction => {
+async function handleInteraction(interaction) {
   try {
     if (interaction.isButton() && interaction.customId === 'claim_dm_ticket') {
       const data = parseTicketTopic(interaction.channel?.topic || '');
       if (!data) {
-        return interaction.reply({ content: '❌ Ce bouton fonctionne uniquement dans un ticket.', ephemeral: true });
+        return interaction.editReply({ content: '❌ Ce bouton fonctionne uniquement dans un ticket.', ephemeral: true });
       }
-      if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageMessages)) {
-        return interaction.reply({ content: '❌ Permission Gérer les messages requise.', ephemeral: true });
+      if (!isTicketStaff(interaction.member, interaction.guild)) {
+        return interaction.editReply({ content: '❌ Seul le staff peut prendre en charge ce ticket.' });
       }
       if (data.claimedBy) {
-        return interaction.reply({ content: '❌ Ce ticket est déjà pris en charge par <@' + data.claimedBy + '>.' , ephemeral: true });
+        return interaction.editReply({ content: '❌ Ce ticket est déjà pris en charge par <@' + data.claimedBy + '>.' });
       }
 
       const user = await client.users.fetch(data.userId).catch(() => null);
-      await interaction.channel.setTopic(ticketTopic(data.userId, data.subject, interaction.user.id)).catch(() => {});
+      await interaction.channel.setTopic(ticketTopic(data.userId, data.subject, interaction.user.id));
 
       if (user) {
-        await interaction.update({
+        await interaction.message.edit({
           embeds: [buildTicketStaffEmbed(user, data.subject, interaction.user.id)],
           components: [buildTicketActions(interaction.user.id)]
         });
-      } else {
-        await interaction.reply({ content: '✅ Ticket pris en charge.', ephemeral: true });
       }
+      await interaction.editReply({ content: '✅ Tu prends en charge ce ticket.' });
 
       await interaction.channel.send({
         embeds: [
@@ -573,7 +665,7 @@ client.on('interactionCreate', async interaction => {
             .setThumbnail(user.displayAvatarURL({ size: 256 }))
             .addFields(
               { name: 'Pseudo', value: user.tag || user.username, inline: true },
-              { name: 'ID', value: '\\`' + user.id + '\\`', inline: true },
+              { name: 'ID', value: '`' + user.id + '`', inline: true },
               { name: 'Sujet', value: ticketSubjectLabel(data.subject), inline: false },
               { name: 'Compte créé', value: '<t:' + Math.floor(user.createdTimestamp / 1000) + ':F>', inline: false }
             )
@@ -598,31 +690,20 @@ client.on('interactionCreate', async interaction => {
       const channel = await resolveCloseTicket(interaction, interaction.customId.split(':')[1]);
       const data = parseTicketTopic(channel?.topic || '');
       if (!data) {
-        return interaction.reply({ content: '❌ Ce formulaire ne correspond pas à un ticket.', ephemeral: true });
+        return interaction.editReply({ content: '❌ Ce formulaire ne correspond pas à un ticket.', ephemeral: true });
       }
 
       if (!canCloseTicket(interaction, channel, data)) {
-        return interaction.reply({ content: '❌ Seuls l’auteur du ticket et le staff peuvent le fermer.', ephemeral: true });
+        return interaction.editReply({ content: '❌ Seuls l’auteur du ticket et le staff peuvent le fermer.', ephemeral: true });
       }
       const reason = interaction.fields.getTextInputValue('close_reason').trim();
       if (!reason || reason.length > 300) {
-        return interaction.reply({ content: '❌ Indique une raison de fermeture (1 à 300 caractères).', ephemeral: true });
+        return interaction.editReply({ content: '❌ Indique une raison de fermeture (1 à 300 caractères).', ephemeral: true });
       }
+      await logClosedTicket(channel, data, interaction.user, reason);
       const user = await client.users.fetch(data.userId).catch(() => null);
-
-      await interaction.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0xED4245)
-            .setTitle('🔒 Fermeture du ticket')
-            .setDescription(
-              'Ticket fermé par <@' + interaction.user.id + '>.\n\n' +
-              '**Raison :** ' + reason + '\n\n' +
-              'Le transcript est en cours d’archivage.'
-            )
-            .setTimestamp()
-        ]
-      });
+      await channel.delete('Ticket Support MP fermé : ' + reason);
+      await interaction.editReply({ content: '🔒 Ticket fermé. La conversation a été archivée dans les logs.' });
 
       if (user) {
         await user.send({
@@ -641,8 +722,6 @@ client.on('interactionCreate', async interaction => {
         }).catch(() => {});
       }
 
-      await logClosedTicket(channel, data, interaction.user, reason);
-      setTimeout(() => channel.delete('Ticket Support MP fermé').catch(() => {}), 3500);
       return;
     }
 
@@ -670,121 +749,31 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.isStringSelectMenu() && interaction.customId === 'ticket_subject_menu') {
       const subject = interaction.values[0];
-      const subjectText = ticketSubjectLabel(subject);
-      const guild = interaction.guild;
-
-      if (!guild) {
-        return interaction.reply({ content: '❌ Ce menu doit être utilisé depuis un serveur.', ephemeral: true });
+      if (!interaction.guild || !Object.hasOwn(TICKET_SUBJECTS, subject)) {
+        return interaction.reply({ content: '❌ Catégorie invalide.', ephemeral: true });
       }
-
-      const alreadyOpen = await findTicketChannel(guild, interaction.user.id);
-      if (alreadyOpen) {
-        const existingData = parseTicketTopic(alreadyOpen.topic || '');
-        await interaction.user.send({
-          embeds: [
-            new EmbedBuilder()
-              .setColor(0xFEE75C)
-              .setTitle('🎫 Tu as déjà un ticket ouvert')
-              .setDescription(
-                'Ton ticket est toujours actif. Continue simplement la conversation ici en MP.\n\n' +
-                '**Sujet :** ' + ticketSubjectLabel(existingData?.subject || 'autre')
-              )
-              .setFooter({ text: 'PlayWise • Support MP' })
-          ],
-          components: [buildTicketUserActions(alreadyOpen)]
-        }).catch(() => {});
-
-        return interaction.reply({
-          content: '⚠️ Tu as déjà un ticket ouvert. Continue directement dans tes MP avec le bot.',
-          ephemeral: true
-        });
-      }
-
-      const channel = await getOrCreateTicketChannel(guild, interaction.user, subject);
-
-      let dmOk = true;
-      await interaction.user.send({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0x5865F2)
-            .setAuthor({ name: 'PlayWise • Support', iconURL: client.user.displayAvatarURL() })
-            .setTitle('🎫 Ticket créé avec succès')
-            .setDescription(
-              'Bonjour **' + interaction.user.username + '** 👋\n\n' +
-              'Ta demande a bien été prise en compte.\n\n' +
-              '**Sujet :** ' + subjectText + '\n' +
-              '🟠 **Statut :** En attente d’un membre du staff\n\n' +
-              'Explique maintenant ta demande **directement ici en MP**. Tu peux envoyer du texte, des captures ou des fichiers.'
-            )
-            .setFooter({ text: 'PlayWise • Support privé' })
-            .setTimestamp()
-        ],
-        components: [buildTicketUserActions(channel)]
-      }).catch(() => { dmOk = false; });
-
-      if (!dmOk) {
-        await channel.delete('MP fermés lors de la création').catch(() => {});
-        return interaction.reply({
-          content: '⚠️ Je ne peux pas t’envoyer de MP. Active les messages privés du serveur puis réessaie.',
-          ephemeral: true
-        });
-      }
-
-      await channel.send({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0x5865F2)
-            .setDescription('📨 Ticket ouvert depuis le panneau support. Sujet : **' + subjectText + '**')
-            .setTimestamp()
-        ]
-      });
-
-      return interaction.reply({
-        content: '✅ Ticket créé ! Je viens de t’envoyer un **MP**. Continue la discussion là-bas.',
-        ephemeral: true
-      });
+      const modal = new ModalBuilder().setCustomId('open_ticket_modal:' + subject)
+        .setTitle('Décrire ta demande');
+      const description = new TextInputBuilder().setCustomId('description')
+        .setLabel('Comment pouvons-nous t’aider ?')
+        .setPlaceholder('Explique le problème et ce que tu as déjà essayé.')
+        .setStyle(TextInputStyle.Paragraph).setMinLength(10).setMaxLength(2000).setRequired(true);
+      modal.addComponents(new ActionRowBuilder().addComponents(description));
+      return interaction.showModal(modal);
     }
 
+    if (interaction.isModalSubmit() && interaction.customId.startsWith('open_ticket_modal:')) {
+      const subject = interaction.customId.split(':')[1];
+      const description = interaction.fields.getTextInputValue('description').trim();
+      if (!Object.hasOwn(TICKET_SUBJECTS, subject) || description.length < 10 || description.length > 2000) {
+        return interaction.editReply({ content: '❌ Décris ta demande en 10 à 2000 caractères.' });
+      }
+      return openTicket(interaction, subject, description);
+    }
+
+    // Old panels continue to work after the update.
     if (interaction.isButton() && interaction.customId === 'open_dm_ticket') {
-      const guild = interaction.guild;
-      if (!guild) {
-        return interaction.reply({ content: '❌ Ce bouton doit être utilisé depuis un serveur.', ephemeral: true });
-      }
-
-      const alreadyOpen = await findTicketChannel(guild, interaction.user.id);
-      if (alreadyOpen) {
-        return interaction.reply({ content: '⚠️ Tu as déjà un ticket ouvert. Continue dans tes MP.', ephemeral: true });
-      }
-
-      const channel = await getOrCreateTicketChannel(guild, interaction.user, 'autre');
-      let dmOk = true;
-
-      await interaction.user.send({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0x5865F2)
-            .setTitle('🎫 Ticket créé')
-            .setDescription(
-              'Ton ticket est ouvert. Décris ta demande directement ici en MP.\n\n' +
-              '🟠 **Statut :** En attente d’un membre du staff'
-            )
-            .setFooter({ text: 'PlayWise • Support MP' })
-            .setTimestamp()
-        ]
-      }).catch(() => { dmOk = false; });
-
-      if (!dmOk) {
-        await channel.delete('MP fermés lors de la création').catch(() => {});
-        return interaction.reply({
-          content: '⚠️ Active tes messages privés puis réessaie.',
-          ephemeral: true
-        });
-      }
-
-      return interaction.reply({
-        content: '✅ Ticket créé ! Regarde tes MP avec le bot.',
-        ephemeral: true
-      });
+      return openTicket(interaction, 'autre');
     }
 
     if (!interaction.isChatInputCommand()) return;
@@ -1033,7 +1022,8 @@ client.on('interactionCreate', async interaction => {
       if (!topic.startsWith('DM_TICKET:')) {
         return interaction.reply({ content: '❌ Ce salon n’est pas un ticket MP.', ephemeral: true });
       }
-      const userId = topic.slice('DM_TICKET:'.length);
+      const data = parseTicketTopic(topic);
+      const userId = data.userId;
       const user = await client.users.fetch(userId).catch(() => null);
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
@@ -1041,7 +1031,9 @@ client.on('interactionCreate', async interaction => {
         .addFields(
           { name: 'Utilisateur', value: user ? '<@' + user.id + '>' : userId, inline: true },
           { name: 'ID', value: userId, inline: true },
-          { name: 'Salon', value: interaction.channel.toString(), inline: true }
+          { name: 'Salon', value: interaction.channel.toString(), inline: true },
+          { name: 'Catégorie', value: ticketSubjectLabel(data.subject), inline: false },
+          { name: 'Responsable', value: data.claimedBy ? '<@' + data.claimedBy + '>' : 'En attente', inline: true }
         )
         .setTimestamp();
       return interaction.reply({ embeds: [embed], ephemeral: true });
@@ -1052,26 +1044,9 @@ client.on('interactionCreate', async interaction => {
         return interaction.reply({ content: '❌ Permission Gérer le serveur requise.', ephemeral: true });
       }
 
-      const embed = new EmbedBuilder()
-        .setColor(0x5865F2)
-        .setAuthor({ name: 'PlayWise • Support', iconURL: client.user.displayAvatarURL() })
-        .setTitle('PlayWise - Bot')
-        .setDescription(
-          'Pour créer un ticket, cliquez sur le bouton ci-dessous.\n\n' +
-          '**Propulsé par l’équipe PlayWise** 🔥'
-        )
-        .setFooter({ text: 'PlayWise • Support' });
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('open_ticket_categories')
-          .setLabel('Créer un ticket')
-          .setEmoji('🎫')
-          .setStyle(ButtonStyle.Primary)
-      );
-
-      await interaction.channel.send({ embeds: [embed], components: [row] });
-      return interaction.reply({ content: '✅ Panneau de tickets envoyé.', ephemeral: true });
+      await interaction.deferReply({ ephemeral: true });
+      await interaction.channel.send(buildTicketPanel());
+      return interaction.editReply({ content: '✅ Panneau de tickets envoyé.' });
     }
 
     if (interaction.commandName === 'close') {
@@ -1088,13 +1063,37 @@ client.on('interactionCreate', async interaction => {
 
   } catch (e) {
     console.error('[COMMAND ERROR]', e);
+    if (interaction.deferred && !interaction.replied) {
+      return interaction.editReply({ content: '❌ L’action a échoué. Si tu fermais un ticket, le salon est conservé tant que son archivage n’a pas réussi.' }).catch(() => {});
+    }
     if (interaction.replied) {
       return interaction.followUp({ content: '❌ Une erreur est survenue.', ephemeral: true }).catch(() => {});
     }
     return interaction.reply({ content: '❌ Une erreur est survenue.', ephemeral: true }).catch(() => {});
   }
-});
+}
 
+
+client.on('interactionCreate', async interaction => {
+  const id = interaction.customId || '';
+  const serialized = id === 'claim_dm_ticket' || id === 'open_dm_ticket' ||
+    id.startsWith('open_ticket_modal:') || id.startsWith('close_dm_ticket_modal');
+  if (!serialized) return handleInteraction(interaction);
+  try {
+    await interaction.deferReply({ ephemeral: true });
+    const guild = interaction.guild || await getMainGuild();
+    const channelId = id.startsWith('close_dm_ticket_modal:') ? id.split(':')[1] : null;
+    const channel = channelId ? await guild?.channels.fetch(channelId).catch(() => null) : interaction.channel;
+    const data = parseTicketTopic(channel?.topic || '');
+    const key = (guild?.id || 'none') + ':' + (data?.userId || interaction.user.id);
+    await withTicketLock(key, () => handleInteraction(interaction));
+  } catch (error) {
+    console.error('[TICKET INTERACTION]', error.message);
+    const reply = { content: '❌ Impossible de traiter cette action. Réessaie dans quelques instants.' };
+    if (interaction.deferred) await interaction.editReply(reply).catch(() => {});
+    else await interaction.reply({ ...reply, ephemeral: true }).catch(() => {});
+  }
+});
 
 client.on('messageCreate', async message => {
   try {
@@ -1103,14 +1102,19 @@ client.on('messageCreate', async message => {
     console.log('[MESSAGE]', message.channel.type === ChannelType.DM ? 'DM' : 'GUILD', message.author.tag || message.author.username);
 
     if (message.channel.type === ChannelType.DM) {
-      await relayDmToTicket(message);
+      const guild = await getMainGuild();
+      await withTicketLock((guild?.id || 'none') + ':' + message.author.id, () => relayDmToTicket(message));
       return;
     }
 
     if (message.channel.type === ChannelType.GuildText && message.channel.topic?.startsWith('DM_TICKET:')) {
       const data = parseTicketTopic(message.channel.topic);
       if (!data?.userId) return;
-      await relayStaffToUser(message, data.userId);
+      if (!isTicketStaff(message.member, message.guild)) return;
+      await withTicketLock(message.guild.id + ':' + data.userId, async () => {
+        const channel = await message.guild.channels.fetch(message.channel.id).catch(() => null);
+        if (parseTicketTopic(channel?.topic || '')) await relayStaffToUser(message, data.userId);
+      });
     }
   } catch (e) {
     console.error('[TICKET MP]', e);

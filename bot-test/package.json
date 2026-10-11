@@ -1,10 +1,11 @@
 {
   "name": "playwise-discord-bot",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test"
   },
   "dependencies": {
     "discord.js": "^14.16.3"
