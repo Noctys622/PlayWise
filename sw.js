@@ -1,1 +1,20 @@
-const C='playwise-v4-logo';const CORE=['/','/guides.html','/avis.html','/reglement.html','/support.html','/profil.html','/assets/playwise.css','/assets/playwise.js','/favicon.svg','/assets/playwise-logo.svg'];self.addEventListener('install',e=>e.waitUntil(caches.open(C).then(c=>c.addAll(CORE)).catch(()=>{})));self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k))))));self.addEventListener('fetch',e=>{if(e.request.method!=='GET'||new URL(e.request.url).pathname.startsWith('/api/'))return;e.respondWith(fetch(e.request).then(r=>{const x=r.clone();caches.open(C).then(c=>c.put(e.request,x));return r}).catch(()=>caches.match(e.request).then(r=>r||caches.match('/404.html'))))});
+const CACHE = 'playwise-v5-elegant-20261011';
+const CORE = ['/', '/guides.html', '/avis.html', '/reglement.html', '/support.html', '/profil.html', '/404.html', '/assets/playwise.js?v=20261011-elegant1', '/assets/playwise-modern.css?v=20261011-elegant1', '/assets/playwise-ui.js?v=20261011-elegant1', '/favicon.svg', '/assets/playwise-logo.svg'];
+self.addEventListener('install', event => {
+  self.skipWaiting();
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE)).catch(() => {}));
+});
+self.addEventListener('activate', event => {
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('playwise-') && key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim()));
+});
+self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+  if (event.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+  event.respondWith(fetch(event.request).then(response => {
+    if (response.ok && response.type !== 'opaque') {
+      const copy = response.clone();
+      event.waitUntil(caches.open(CACHE).then(cache => cache.put(event.request, copy)).catch(() => {}));
+    }
+    return response;
+  }).catch(() => caches.match(event.request).then(response => response || (event.request.mode === 'navigate' ? caches.match('/404.html') : Response.error()))));
+});
