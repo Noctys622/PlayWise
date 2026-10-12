@@ -1,4 +1,5 @@
 const http = require('http');
+const lsBackup = require('./ls-backup');
 const { withTicketLock, fetchTranscriptMessages } = require('./ticket-core');
 const {
   Client,
@@ -45,7 +46,7 @@ const server = http.createServer((req, res) => {
   });
   res.end(JSON.stringify({
     ok: healthCheck ? ready : true,
-    version: 'tickets-v3',
+    version: 'tickets-v3-backupls',
     discord: client.isReady() ? 'online' : 'offline',
     guilds: client.isReady() ? client.guilds.cache.size : 0
   }));
@@ -479,6 +480,7 @@ function buildTicketPanel() {
 }
 
 const commands = [
+  lsBackup.command,
   new SlashCommandBuilder().setName('ping').setDescription('Affiche la latence du bot'),
   new SlashCommandBuilder().setName('help').setDescription('Affiche les commandes'),
   new SlashCommandBuilder().setName('serverinfo').setDescription('Informations sur le serveur'),
@@ -598,6 +600,7 @@ client.on('guildCreate', async guild => {
 
 async function handleInteraction(interaction) {
   try {
+    if (await lsBackup.handle(interaction)) return;
     if (interaction.isButton() && interaction.customId === 'claim_dm_ticket') {
       const data = parseTicketTopic(interaction.channel?.topic || '');
       if (!data) {
@@ -798,6 +801,7 @@ async function handleInteraction(interaction) {
           '/close — fermer un ticket MP (staff)',
           '/ticketpanel — envoyer le panneau de tickets (staff)',
           '/ticketinfo — infos du ticket actuel',
+          '/backupls — installer LS Custom (propriétaire)',
           '/kick • /ban — modération',
           '/timeout • /untimeout — timeout',
           '/slowmode — mode lent',

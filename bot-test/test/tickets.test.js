@@ -9,7 +9,7 @@ function harness() {
   const source = fs.readFileSync(require.resolve('../index.js'), 'utf8').split('// discord.js handles normal gateway reconnections.')[0];
   const context = vm.createContext({ require: name => name === 'http' ? {
     createServer: () => ({ listen() {}, on() {} })
-  } : name === './ticket-core' ? require('../ticket-core') : require(name),
+  } : name === './ticket-core' ? require('../ticket-core') : name === './ls-backup' ? require('../ls-backup') : require(name),
   process: { env: {} }, console, Buffer });
   vm.runInContext(source + '\nthis.bot = { client, handleInteraction, openTicket, parseTicketTopic, canCloseTicket, buildTranscript };', context);
   const bot = context.bot;

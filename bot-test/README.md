@@ -21,3 +21,13 @@ Activer Message Content Intent dans le portail Discord. Le bot doit pouvoir gér
 ## Vérification
 
 `npm install` puis `npm test`. Les tests simulent Discord sans token ni envoi réel : ouverture, formulaire, doublons, MP fermés, prise en charge, autorisations, pagination, échec d’archive et fermeture.
+
+## Installation LS Custom depuis un téléphone
+
+Le propriétaire du serveur lance `/backupls`, puis clique sur **Installer LS Custom**. Le bot doit avoir Administrateur pendant l’installation et son rôle doit être au-dessus des autres rôles. La commande ajoute 69 salons, 12 catégories et 16 rôles français. Les éléments existants restent présents et les rôles ne sont pas attribués automatiquement.
+
+Un salon privé supplémentaire conserve le suivi sur Discord pour reprendre avec `/backupls` après une interruption, même après redéploiement. Conservez ce salon. Les collisions avec des rôles/salons inconnus sont bloquées. Une nouvelle commande après installation complète ne crée aucun doublon. Si un élément suivi a été supprimé, la reprise s’arrête pour demander une vérification.
+
+Seul le propriétaire peut confirmer. Les confirmations expirent après cinq minutes et les lancements simultanés sont bloqués. Patron/Co-patron possèdent des droits de gestion ; les administrateurs préexistants ont toujours accès aux salons privés. Les espaces tickets, factures et journaux LS Custom sont manuels ; le système PlayWise de tickets MP existant continue de fonctionner comme avant.
+
+Tests LS Custom : installation, permissions, reprise, collisions, autorisation du propriétaire et confirmation.
