@@ -10,10 +10,10 @@ const admin = c => c.setDefaultMemberPermissions(P.Administrator).setDMPermissio
 const commands = [
  admin(new SlashCommandBuilder().setName('setautorole').setDescription('Rôle attribué aux nouveaux membres').addRoleOption(o=>o.setName('role').setDescription('Rôle à attribuer').setRequired(true))),
  admin(new SlashCommandBuilder().setName('setwelcome').setDescription('Salon des messages de bienvenue').addChannelOption(o=>o.setName('salon').setDescription('Salon texte').addChannelTypes(ChannelType.GuildText).setRequired(true))),
- admin(new SlashCommandBuilder().setName('setlog').setDescription('Salon des journaux LS Custom').addChannelOption(o=>o.setName('salon').setDescription('Salon texte').addChannelTypes(ChannelType.GuildText).setRequired(true))),
- admin(new SlashCommandBuilder().setName('lsconfig').setDescription('Afficher la configuration LS Custom')),
- admin(new SlashCommandBuilder().setName('lsreset').setDescription('Désactiver une option LS Custom').addStringOption(o=>o.setName('option').setDescription('Option à retirer').setRequired(true).addChoices({name:'Rôle automatique',value:'autorole'},{name:'Bienvenue',value:'welcome'},{name:'Logs',value:'log'}))),
- admin(new SlashCommandBuilder().setName('recrutement').setDescription('Publier une annonce de recrutement LS Custom').addStringOption(o=>o.setName('message').setDescription('Détails du recrutement').setRequired(true))),
+ admin(new SlashCommandBuilder().setName('setlog').setDescription('Salon des journaux Route 68').addChannelOption(o=>o.setName('salon').setDescription('Salon texte').addChannelTypes(ChannelType.GuildText).setRequired(true))),
+ admin(new SlashCommandBuilder().setName('lsconfig').setDescription('Afficher la configuration Route 68')),
+ admin(new SlashCommandBuilder().setName('lsreset').setDescription('Désactiver une option Route 68').addStringOption(o=>o.setName('option').setDescription('Option à retirer').setRequired(true).addChoices({name:'Rôle automatique',value:'autorole'},{name:'Bienvenue',value:'welcome'},{name:'Logs',value:'log'}))),
+ admin(new SlashCommandBuilder().setName('recrutement').setDescription('Publier une annonce de recrutement Route 68').addStringOption(o=>o.setName('message').setDescription('Détails du recrutement').setRequired(true))),
  admin(new SlashCommandBuilder().setName('lsannonce').setDescription('Publier une annonce garage').addStringOption(o=>o.setName('titre').setDescription('Titre').setRequired(true)).addStringOption(o=>o.setName('message').setDescription('Contenu').setRequired(true))),
  admin(new SlashCommandBuilder().setName('lsstaff').setDescription('Afficher les employés du garage').addRoleOption(o=>o.setName('role').setDescription('Rôle des employés').setRequired(true)))
 ];
@@ -29,7 +29,7 @@ async function handle(interaction) {
  }
  const name=interaction.commandName,g=interaction.guild,c=config(g.id);
  try {
- if(name==='lsconfig') await interaction.reply({content:`⚙️ **LS Custom**\nRôle automatique : ${c.autorole?'<@&'+c.autorole+'>':'désactivé'}\nBienvenue : ${c.welcome?'<#'+c.welcome+'>':'désactivé'}\nLogs : ${c.log?'<#'+c.log+'>':'désactivé'}`,ephemeral:true});
+ if(name==='lsconfig') await interaction.reply({content:`⚙️ **Route 68**\nRôle automatique : ${c.autorole?'<@&'+c.autorole+'>':'désactivé'}\nBienvenue : ${c.welcome?'<#'+c.welcome+'>':'désactivé'}\nLogs : ${c.log?'<#'+c.log+'>':'désactivé'}`,ephemeral:true});
  else if(name==='lsreset') {const key=interaction.options.getString('option',true);delete c[key];save();await interaction.reply({content:'✅ Option désactivée.',ephemeral:true});}
  else if(name==='setautorole') {
    const role=interaction.options.getRole('role',true),me=await g.members.fetchMe();
@@ -42,23 +42,23 @@ async function handle(interaction) {
    const role=interaction.options.getRole('role',true);
    await g.members.fetch();
    const members=g.members.cache.filter(m=>m.roles.cache.has(role.id));
-   await interaction.reply({content:'👥 **Personnel LS Custom — '+role.name+'**\n'+(members.size?members.map(m=>'<@'+m.id+'>').slice(0,40).join('\n'):'Aucun employé trouvé.'),ephemeral:true});
+   await interaction.reply({content:'👥 **Personnel Route 68 — '+role.name+'**\n'+(members.size?members.map(m=>'<@'+m.id+'>').slice(0,40).join('\n'):'Aucun employé trouvé.'),ephemeral:true});
  } else {
-   const title=name==='recrutement'?'📋 LS Custom recrute !':interaction.options.getString('titre',true);
+   const title=name==='recrutement'?'📋 Route 68 recrute !':interaction.options.getString('titre',true);
    const message=interaction.options.getString('message',true);
-   await interaction.channel.send({embeds:[new EmbedBuilder().setColor(0x3498db).setTitle(title).setDescription(message).setFooter({text:'LS Custom • Direction'}).setTimestamp()]});
+   await interaction.channel.send({embeds:[new EmbedBuilder().setColor(0x3498db).setTitle(title).setDescription(message).setFooter({text:'Route 68 • Direction'}).setTimestamp()]});
    await interaction.reply({content:'✅ Annonce publiée.',ephemeral:true});
  }
- if(name!=='lsconfig'&&name!=='lsstaff') await log(g,'⚙️ LS Custom','Commande /'+name+' exécutée par <@'+interaction.user.id+'>');
+ if(name!=='lsconfig'&&name!=='lsstaff') await log(g,'⚙️ Route 68','Commande /'+name+' exécutée par <@'+interaction.user.id+'>');
  } catch(e) {console.error('[LS]',e);if(!interaction.replied) await interaction.reply({content:'❌ Action impossible : vérifie les permissions du bot.',ephemeral:true}).catch(()=>{});}
  return true;
 }
 function attach(client) {
  client.on('guildMemberAdd',async member=>{
    const c=config(member.guild.id);
-   if(c.autorole) await member.roles.add(c.autorole,'LS Custom : rôle automatique').catch(e=>console.warn('[LS autorole]',e.message));
+   if(c.autorole) await member.roles.add(c.autorole,'Route 68 : rôle automatique').catch(e=>console.warn('[LS autorole]',e.message));
    if(c.welcome) {const ch=await member.guild.channels.fetch(c.welcome).catch(()=>null);
-     await ch?.send({content:'👋 Bienvenue <@'+member.id+'> chez **LS Custom** !'}).catch(()=>{});}
+     await ch?.send({content:'👋 Bienvenue <@'+member.id+'> chez **Route 68** !'}).catch(()=>{});}
    await log(member.guild,'📥 Arrivée','<@'+member.id+'> a rejoint le serveur.');
  });
  client.on('guildMemberRemove',m=>log(m.guild,'📤 Départ','<@'+m.id+'> a quitté le serveur.'));
