@@ -95,3 +95,14 @@ test('owner confirmation requires an issued nonce; cancel creates nothing', asyn
   assert.match(response.content, /annulée/);
   assert.equal(f.guild.channels.cache.size, 0);
 });
+
+test('role-order permission failure identifies the stage and can be resumed', async () => {
+  const f = fixture();
+  f.guild.roles.setPositions = async () => { throw Object.assign(new Error('Missing Permissions'), { code: 50013 }); };
+  await assert.rejects(ls.install(f.guild, f.botId, async () => {}), /classement des rôles.*replace PlayWise/);
+  assert.equal(f.guild.roles.cache.size, 18);
+  f.guild.roles.setPositions = async () => {};
+  await ls.install(f.guild, f.botId, async () => {});
+  assert.equal(f.guild.roles.cache.size, 18);
+  assert.equal(f.guild.channels.cache.size, 82);
+});

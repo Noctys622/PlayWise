@@ -29,6 +29,8 @@ async function preflight(guild) {
   return me;
 }
 async function install(guild, botId, update) {
+  let step = 'vérification des accès';
+  try {
   await preflight(guild);
   const matches = guild.channels.cache.filter(c => c.type === ChannelType.GuildText && c.topic === MARKER);
   if (matches.size > 1) throw new Error('Plusieurs salons de suivi LS Custom existent. Fais vérifier leur contenu avant de continuer.');
@@ -36,6 +38,7 @@ async function install(guild, botId, update) {
   let message;
   let state = { v: 1, g: guild.id, r: [], c: [], m: [], done: false };
   if (tracker) {
+    step = 'lecture du suivi privé';
     const messages = await tracker.messages.fetch({ limit: 100 });
     message = messages.find(m => m.author.id === botId && m.embeds[0]?.title === MARKER);
     if (!message) throw new Error('Suivi LS Custom incomplet : le message de suivi est manquant.');
@@ -60,22 +63,39 @@ async function install(guild, botId, update) {
   if (guild.roles.cache.size + model.roles.filter((_, i) => !state.r[i]).length > 250)
     throw new Error('Pas assez de place dans ce serveur pour les rôles LS Custom.');
   if (!tracker) {
+    step = 'création du salon de suivi privé';
     tracker = await guild.channels.create({ name: STATE_NAME, type: ChannelType.GuildText, topic: MARKER,
       permissionOverwrites: [{ id: guild.id, deny: [P.ViewChannel] },
         { id: botId, type: 1, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory, P.EmbedLinks] }],
       reason: 'Suivi privé de l’installation LS Custom' });
+    step = 'enregistrement du suivi privé';
     message = await tracker.send(encode(state));
   }
-  const save = () => message.edit(encode(state));
+  const save = async () => {
+    const previous = step;
+    step = 'enregistrement de la progression';
+    await message.edit(encode(state));
+    step = previous;
+  };
   await update('⏳ Installation LS Custom en cours. Tu peux garder Discord ouvert ; aucune autre commande n’est nécessaire.');
   for (let i = model.roles.length - 1; i >= 0; i--) {
     if (!state.r[i]) {
       const role = model.roles[i];
+      step = 'création du rôle ' + role.name;
       const created = await guild.roles.create({ name: role.name, color: role.color, hoist: role.hoist,
         mentionable: false, permissions: BigInt(role.permissions), reason: 'Base LS Custom FR' });
       state.r[i] = created.id;
       await save();
     }
+  }
+  step = 'classement des rôles';
+  // Refresh Discord's positions after role creation before checking editability.
+  await guild.roles.fetch();
+  const me = await guild.members.fetchMe();
+  for (const roleId of state.r) {
+    const role = guild.roles.cache.get(roleId);
+    if (role.comparePositionTo(me.roles.highest) >= 0)
+      throw new Error('Déplace le rôle PlayWise au-dessus de TOUS les nouveaux rôles LS Custom, enregistre, puis relance /backupls.');
   }
   await guild.roles.setPositions(model.roles.map((_, i) => ({ role: state.r[i], position: model.roles.length - i })));
   for (const cat of model.categories) {
@@ -89,6 +109,7 @@ async function install(guild, botId, update) {
           options.rateLimitPerUser = item.slowmode || 0;
         }
         if (item.type === ChannelType.GuildVoice) options.userLimit = item.user_limit || 0;
+        step = 'création du salon ' + item.name;
         const channel = await guild.channels.create(options);
         state.c[index] = channel.id;
         await save();
@@ -96,6 +117,7 @@ async function install(guild, botId, update) {
       if (item.message && !state.m.includes(index)) {
         const channel = guild.channels.cache.get(state.c[index]);
         // Recover a seed sent just before a restart without sending it twice.
+        step = 'message de présentation dans ' + item.name;
         const recent = await channel.messages.fetch({ limit: 100 });
         if (!recent.some(m => m.author.id === botId && m.content === item.message))
           await channel.send({ content: item.message, allowedMentions: { parse: [] } });
@@ -108,6 +130,16 @@ async function install(guild, botId, update) {
   state.done = true;
   await save();
   await update('✅ **LS Custom installé !**\n69 salons (dont 8 vocaux), 12 catégories et 16 rôles.\nAttribue les grades dans les paramètres du serveur, puis complète horaires et tarifs. Les tickets, factures et journaux LS Custom restent manuels.\nLe salon privé de suivi permet d’éviter les doublons : conserve-le.');
+  } catch (error) {
+    if (Number(error.code) === 50013 || /Missing Permissions/i.test(error.message)) {
+      console.error('[BACKUPLS PERMISSIONS]', step, error.code, error.method, error.url);
+      const guidance = step === 'classement des rôles' || step.startsWith('création du rôle')
+        ? 'Dans Paramètres du serveur → Rôles, replace PlayWise au-dessus de tous les rôles LS Custom déjà créés et enregistre.'
+        : 'Vérifie que le rôle du bot PlayWise possède Administrateur et reste au-dessus des rôles LS Custom.';
+      throw new Error('Discord refuse l’étape « ' + step + ' ». ' + guidance + ' Puis relance /backupls.');
+    }
+    throw error;
+  }
 }
 
 async function handle(interaction) {
