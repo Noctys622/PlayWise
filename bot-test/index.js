@@ -481,6 +481,9 @@ function buildTicketPanel() {
 
 const commands = [
   lsBackup.command,
+  new SlashCommandBuilder().setName('setpdp').setDescription('Change la photo du bot sur ce serveur').setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addAttachmentOption(o => o.setName('image').setDescription('PNG, JPG ou WEBP (2 Mo max)').setRequired(true)),
+  new SlashCommandBuilder().setName('resetpdp').setDescription('Restaure la photo globale du bot').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName('ping').setDescription('Affiche la latence du bot'),
   new SlashCommandBuilder().setName('help').setDescription('Affiche les commandes'),
   new SlashCommandBuilder().setName('serverinfo').setDescription('Informations sur le serveur'),
@@ -600,6 +603,29 @@ client.on('guildCreate', async guild => {
 
 async function handleInteraction(interaction) {
   try {
+    if (interaction.isChatInputCommand() && ['setpdp', 'resetpdp'].includes(interaction.commandName)) {
+      if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator))
+        return interaction.reply({ content: '❌ Réservé aux administrateurs.', ephemeral: true });
+      await interaction.deferReply({ ephemeral: true });
+      try {
+        let avatar = null;
+        if (interaction.commandName === 'setpdp') {
+          const file = interaction.options.getAttachment('image');
+          if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.contentType) || file.size > 2 * 1024 * 1024)
+            return interaction.editReply('❌ Image PNG, JPG ou WEBP de moins de 2 Mo requise.');
+          const response = await fetch(file.url);
+          if (!response.ok) throw new Error('Téléchargement impossible');
+          const bytes = Buffer.from(await response.arrayBuffer());
+          if (bytes.length > 2 * 1024 * 1024) throw new Error('Image trop grande');
+          avatar = 'data:' + file.contentType + ';base64,' + bytes.toString('base64');
+        }
+        await client.rest.patch('/guilds/' + interaction.guildId + '/members/@me', { body: { avatar } });
+        return interaction.editReply(avatar ? '✅ Photo du bot modifiée sur ce serveur.' : '✅ Photo du serveur réinitialisée.');
+      } catch (error) {
+        console.error('[AVATAR]', error);
+        return interaction.editReply('❌ Discord a refusé la modification. Vérifie que cette fonctionnalité est disponible pour ton bot.');
+      }
+    }
     if (await lsBackup.handle(interaction)) return;
     if (interaction.isButton() && interaction.customId === 'claim_dm_ticket') {
       const data = parseTicketTopic(interaction.channel?.topic || '');
@@ -802,6 +828,7 @@ async function handleInteraction(interaction) {
           '/ticketpanel — envoyer le panneau de tickets (staff)',
           '/ticketinfo — infos du ticket actuel',
           '/backupls — installer LS Custom (propriétaire)',
+          '/setpdp • /resetpdp — avatar par serveur (admin)',
           '/kick • /ban — modération',
           '/timeout • /untimeout — timeout',
           '/slowmode — mode lent',
