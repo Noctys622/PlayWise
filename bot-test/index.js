@@ -34,7 +34,7 @@ const client = new Client({
   ],
   partials: [Partials.Channel],
   presence: {
-    activities: [{ name: '/help • PlayWise', type: ActivityType.Playing }],
+    activities: [{ name: '/help • Route 68', type: ActivityType.Playing }],
     status: 'online'
   }
 });
@@ -168,7 +168,7 @@ async function createTicketLogChannel(guild) {
       name: TICKET_LOG_CHANNEL_NAME,
       type: ChannelType.GuildText,
       parent: category.id,
-      topic: 'Logs des tickets MP PlayWise',
+      topic: 'Logs des tickets MP Route 68',
       permissionOverwrites: ticketOverwrites(guild)
     });
   }
@@ -252,7 +252,7 @@ function showCloseTicketModal(interaction, channel) {
 function buildTicketStaffEmbed(user, subject = 'autre', claimedBy = null) {
   return new EmbedBuilder()
     .setColor(claimedBy ? 0x57F287 : 0xFEE75C)
-    .setAuthor({ name: 'PlayWise • Support privé', iconURL: client.user.displayAvatarURL() })
+    .setAuthor({ name: 'Route 68 • Support privé', iconURL: client.user.displayAvatarURL() })
     .setTitle('🎫 Ticket de ' + user.username)
     .setThumbnail(user.displayAvatarURL({ size: 256 }))
     .setDescription(
@@ -266,7 +266,7 @@ function buildTicketStaffEmbed(user, subject = 'autre', claimedBy = null) {
       { name: '📌 Statut', value: claimedBy ? '🟢 Pris en charge' : '🟠 En attente d’un membre du staff', inline: true },
       { name: '🛡️ Responsable', value: claimedBy ? '<@' + claimedBy + '>' : 'Aucun', inline: true }
     )
-    .setFooter({ text: 'PlayWise • Ticket MP' })
+    .setFooter({ text: 'Route 68 • Ticket MP' })
     .setTimestamp();
 }
 
@@ -305,7 +305,7 @@ async function relayDmToTicket(message) {
   }
 
   const member = await guild.members.fetch(message.author.id).catch(() => null);
-  if (!member) return message.reply('❌ Rejoins le serveur PlayWise pour contacter son support.');
+  if (!member) return message.reply('❌ Rejoins le serveur Route 68 pour contacter son support.');
 
   const existing = await findTicketChannel(guild, message.author.id);
   const channel = await getOrCreateTicketChannel(guild, message.author, 'autre');
@@ -315,7 +315,7 @@ async function relayDmToTicket(message) {
       embeds: [
         new EmbedBuilder()
           .setColor(0x5865F2)
-          .setAuthor({ name: 'PlayWise • Support', iconURL: client.user.displayAvatarURL() })
+          .setAuthor({ name: 'Route 68 • Support', iconURL: client.user.displayAvatarURL() })
           .setTitle('🎫 Ticket ouvert')
           .setDescription(
             'Bonjour **' + message.author.username + '** 👋\n\n' +
@@ -323,7 +323,7 @@ async function relayDmToTicket(message) {
             'Tes messages sont transmis directement à notre équipe support.\n\n' +
             '🟠 **Statut :** En attente d’un membre du staff'
           )
-          .setFooter({ text: 'PlayWise • Un seul ticket ouvert par personne' })
+          .setFooter({ text: 'Route 68 • Un seul ticket ouvert par personne' })
           .setTimestamp()
       ],
       components: [buildTicketUserActions(channel)]
@@ -364,7 +364,7 @@ async function relayStaffToUser(message, userId) {
       iconURL: message.author.displayAvatarURL()
     })
     .setDescription(message.content || '*Pièce jointe envoyée*')
-    .setFooter({ text: 'PlayWise • Support MP' })
+    .setFooter({ text: 'Route 68 • Support MP' })
     .setTimestamp();
 
   const files = [...message.attachments.values()].map(a => a.url);
@@ -408,7 +408,7 @@ async function logClosedTicket(channel, data, closer, reason) {
       { name: '🔒 Fermé par', value: '<@' + closer.id + '>', inline: true },
       { name: '📝 Raison', value: reason.slice(0, 1024), inline: false }
     )
-    .setFooter({ text: 'PlayWise • Historique ticket' })
+    .setFooter({ text: 'Route 68 • Historique ticket' })
     .setTimestamp();
 
   await logChannel.send({
@@ -431,7 +431,7 @@ async function openTicket(interaction, subject, description = '') {
   try {
     dm = await interaction.user.send({ embeds: [new EmbedBuilder().setColor(0x5865F2)
       .setTitle('📩 Ouverture de ton ticket')
-      .setDescription('Nous préparons ta conversation avec le support PlayWise.')] });
+      .setDescription('Nous préparons ta conversation avec le support Route 68.')] });
   } catch {
     return interaction.editReply({ content: '⚠️ Active les messages privés pour ce serveur, puis réessaie.' });
   }
@@ -441,11 +441,11 @@ async function openTicket(interaction, subject, description = '') {
       .setAuthor({ name: interaction.user.username + ' • Demande initiale', iconURL: interaction.user.displayAvatarURL() })
       .setDescription(description).setTimestamp()] });
     await dm.edit({ embeds: [new EmbedBuilder().setColor(0x5865F2)
-      .setAuthor({ name: 'PlayWise • Support privé', iconURL: client.user.displayAvatarURL() })
+      .setAuthor({ name: 'Route 68 • Support privé', iconURL: client.user.displayAvatarURL() })
       .setTitle('🎫 Ton ticket est ouvert')
       .setDescription('**Catégorie :** ' + ticketSubjectLabel(subject) +
         '\n**Statut :** En attente du staff.\n\nTa demande a été transmise. Continue à écrire ici : texte, captures et fichiers sont envoyés au support.')
-      .setFooter({ text: 'PlayWise • Tu peux fermer le ticket avec le bouton ci-dessous' }).setTimestamp()],
+      .setFooter({ text: 'Route 68 • Tu peux fermer le ticket avec le bouton ci-dessous' }).setTimestamp()],
       components: [buildTicketUserActions(channel)] });
   } catch (error) {
     await channel.delete('Ouverture incomplète').catch(() => {});
@@ -459,7 +459,7 @@ async function openTicket(interaction, subject, description = '') {
 function buildTicketPanel() {
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
-        .setAuthor({ name: 'PlayWise • Support', iconURL: client.user.displayAvatarURL() })
+        .setAuthor({ name: 'Route 68 • Support', iconURL: client.user.displayAvatarURL() })
         .setTitle('Besoin d’aide ?')
         .setDescription(
           'Notre équipe est là pour t’aider.\n\n' +
@@ -468,7 +468,7 @@ function buildTicketPanel() {
           '**3.** Continue la conversation en **message privé** avec le bot.\n\n' +
           'Tu peux joindre des captures et fermer ton ticket une fois le problème résolu.'
         )
-        .setFooter({ text: 'PlayWise • Support' });
+        .setFooter({ text: 'Route 68 • Support' });
 
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -583,10 +583,10 @@ lsFeatures.attach(client);
 client.once(Events.ClientReady, async () => {
   console.log('[DISCORD] Connecté en tant que', client.user.tag);
   for (const guild of client.guilds.cache.values()) {
-    try { await guild.members.me?.setNickname('PlayWise'); } catch {}
+    try { await guild.members.me?.setNickname('Route 68'); } catch {}
   }
   client.user.setPresence({
-    activities: [{ name: '/help • PlayWise', type: ActivityType.Playing }],
+    activities: [{ name: '/help • Route 68', type: ActivityType.Playing }],
     status: 'online'
   });
 
@@ -674,7 +674,7 @@ async function handleInteraction(interaction) {
                 '**' + interaction.user.username + '** s’occupe maintenant de ta demande.\n\n' +
                 'Tu peux continuer à écrire directement ici.'
               )
-              .setFooter({ text: 'PlayWise • Support MP' })
+              .setFooter({ text: 'Route 68 • Support MP' })
               .setTimestamp()
           ]
         }).catch(() => {});
@@ -746,11 +746,11 @@ async function handleInteraction(interaction) {
               .setColor(0xED4245)
               .setTitle('🔒 Ton ticket est fermé')
               .setDescription(
-                'Ton ticket PlayWise vient d’être fermé par **' + interaction.user.username + '**.\n\n' +
+                'Ton ticket Route 68 vient d’être fermé par **' + interaction.user.username + '**.\n\n' +
                 '**Raison :** ' + reason + '\n\n' +
                 'Si tu as encore besoin d’aide, tu pourras ouvrir un nouveau ticket depuis le panneau support.'
               )
-              .setFooter({ text: 'PlayWise • Support MP' })
+              .setFooter({ text: 'Route 68 • Support MP' })
               .setTimestamp()
           ]
         }).catch(() => {});
@@ -765,12 +765,12 @@ async function handleInteraction(interaction) {
         .setPlaceholder('Choisir une catégorie')
         .addOptions(
           { label: 'Assistance générale', value: 'assistance', emoji: '🆘', description: 'Besoin d’aide ou d’informations' },
-          { label: 'Problème avec le site', value: 'site', emoji: '🌐', description: 'Bug ou problème sur PlayWise' },
+          { label: 'Problème avec le site', value: 'site', emoji: '🌐', description: 'Bug ou problème sur Route 68' },
           { label: 'Problème Discord', value: 'discord', emoji: '💬', description: 'Serveur, rôle ou accès Discord' },
           { label: 'Problème avec le bot', value: 'bot', emoji: '🤖', description: 'Commande ou fonctionnalité du bot' },
           { label: 'Partenariat', value: 'partenariat', emoji: '🤝', description: 'Demande de partenariat' },
           { label: 'Signalement', value: 'signalement', emoji: '🚨', description: 'Signaler un problème ou un membre' },
-          { label: 'Suggestion', value: 'suggestion', emoji: '💡', description: 'Proposer une idée à PlayWise' },
+          { label: 'Suggestion', value: 'suggestion', emoji: '💡', description: 'Proposer une idée à Route 68' },
           { label: 'Autre question / problème', value: 'autre', emoji: '❓', description: 'Toute autre demande' }
         );
 
@@ -818,7 +818,7 @@ async function handleInteraction(interaction) {
     if (interaction.commandName === 'help') {
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
-        .setTitle('🤖 PlayWise — Commandes')
+        .setTitle('🤖 Route 68 — Commandes')
         .setDescription([
           '/ping — latence',
           '/serverinfo — infos serveur',
@@ -832,7 +832,7 @@ async function handleInteraction(interaction) {
           '/close — fermer un ticket MP (staff)',
           '/ticketpanel — envoyer le panneau de tickets (staff)',
           '/ticketinfo — infos du ticket actuel',
-          '/backupls — installer LS Custom (propriétaire)',
+          '/backupls — installer Route 68 (propriétaire)',
           '/setpdp • /resetpdp — avatar par serveur (admin)',
           '/setautorole • /setwelcome • /setlog — configuration LS',
           '/lsconfig • /lsreset — paramètres LS',
@@ -937,7 +937,7 @@ async function handleInteraction(interaction) {
 
     if (interaction.commandName === 'status') {
       return interaction.reply({
-        content: '🟢 PlayWise est en ligne\nServeurs : **' + client.guilds.cache.size + '**\nPing : **' + client.ws.ping + ' ms**',
+        content: '🟢 Route 68 est en ligne\nServeurs : **' + client.guilds.cache.size + '**\nPing : **' + client.ws.ping + ' ms**',
         ephemeral: true
       });
     }
@@ -1047,7 +1047,7 @@ async function handleInteraction(interaction) {
         .setColor(0x5865F2)
         .setTitle('📢 ' + interaction.options.getString('titre', true))
         .setDescription(interaction.options.getString('message', true))
-        .setFooter({ text: 'PlayWise • Annonce' })
+        .setFooter({ text: 'Route 68 • Annonce' })
         .setTimestamp();
       return interaction.reply({ embeds: [embed] });
     }
@@ -1230,7 +1230,7 @@ if (renderUrl && process.env.KEEP_ALIVE_ENABLED !== 'false') {
         try {
           const response = await fetch(target, {
             signal: AbortSignal.timeout(10000),
-            headers: { 'User-Agent': 'PlayWise-KeepAlive/1.0' }
+            headers: { 'User-Agent': 'Route 68-KeepAlive/1.0' }
           });
           await response.body?.cancel();
           if (!response.ok) console.warn('[WEB] Maintien actif: HTTP', response.status);
