@@ -7,7 +7,7 @@ const MARKER = 'LS_CUSTOM_BACKUP_STATE_V1';
 const STATE_NAME = '🔐・installation-ls-custom';
 const items = model.categories.flatMap(cat => [cat, ...cat.channels]);
 const command = new SlashCommandBuilder().setName('backupls')
-  .setDescription('Installer la base LS Custom française (propriétaire du serveur)')
+  .setDescription('Installer la base Route 68 française (propriétaire du serveur)')
   .setDefaultMemberPermissions(P.Administrator);
 
 function encode(state) {
@@ -25,7 +25,7 @@ async function preflight(guild) {
   const me = await guild.members.fetchMe();
   if (!me.permissions.has(P.Administrator)) throw new Error('Donne temporairement Administrateur au bot pour installer les permissions.');
   if (guild.roles.cache.some(r => r.id !== guild.id && r.id !== me.roles.highest.id && r.comparePositionTo(me.roles.highest) > 0))
-    throw new Error('Place le rôle PlayWise tout en haut dans Paramètres du serveur → Rôles.');
+    throw new Error('Place le rôle Route 68 tout en haut dans Paramètres du serveur → Rôles.');
   return me;
 }
 async function install(guild, botId, update) {
@@ -33,7 +33,7 @@ async function install(guild, botId, update) {
   try {
   await preflight(guild);
   const matches = guild.channels.cache.filter(c => c.type === ChannelType.GuildText && c.topic === MARKER);
-  if (matches.size > 1) throw new Error('Plusieurs salons de suivi LS Custom existent. Fais vérifier leur contenu avant de continuer.');
+  if (matches.size > 1) throw new Error('Plusieurs salons de suivi Route 68 existent. Fais vérifier leur contenu avant de continuer.');
   let tracker = matches.first();
   let message;
   let state = { v: 1, g: guild.id, r: [], c: [], m: [], done: false };
@@ -41,10 +41,10 @@ async function install(guild, botId, update) {
     step = 'lecture du suivi privé';
     const messages = await tracker.messages.fetch({ limit: 100 });
     message = messages.find(m => m.author.id === botId && m.embeds[0]?.title === MARKER);
-    if (!message) throw new Error('Suivi LS Custom incomplet : le message de suivi est manquant.');
+    if (!message) throw new Error('Suivi Route 68 incomplet : le message de suivi est manquant.');
     state = JSON.parse(message.embeds[0].description);
     if (state.v !== 1 || state.g !== guild.id || !Array.isArray(state.r) || !Array.isArray(state.c) || !Array.isArray(state.m))
-      throw new Error('Suivi LS Custom invalide.');
+      throw new Error('Suivi Route 68 invalide.');
   }
   // Do not adopt unknown roles, which could grant existing members private access.
   for (const [i, role] of model.roles.entries()) {
@@ -57,17 +57,17 @@ async function install(guild, botId, update) {
       if (!guild.channels.cache.has(state.c[i])) throw new Error('Un salon déjà créé a été supprimé : ' + item.name);
     } else if (guild.channels.cache.some(c => c.name === item.name)) throw new Error('Salon existant non suivi : ' + item.name + '. Renomme-le avant de relancer.');
   }
-  if (state.done) { await update('✅ La base LS Custom est déjà installée. Aucun doublon créé.' + (state.orderPending ? '\nLes grades restent à ranger manuellement dans Paramètres → Rôles.' : '')); return; }
+  if (state.done) { await update('✅ La base Route 68 est déjà installée. Aucun doublon créé.' + (state.orderPending ? '\nLes grades restent à ranger manuellement dans Paramètres → Rôles.' : '')); return; }
   if (guild.channels.cache.size + items.filter((_, i) => !state.c[i]).length + (tracker ? 0 : 1) > 500)
-    throw new Error('Pas assez de place dans ce serveur pour les salons LS Custom.');
+    throw new Error('Pas assez de place dans ce serveur pour les salons Route 68.');
   if (guild.roles.cache.size + model.roles.filter((_, i) => !state.r[i]).length > 250)
-    throw new Error('Pas assez de place dans ce serveur pour les rôles LS Custom.');
+    throw new Error('Pas assez de place dans ce serveur pour les rôles Route 68.');
   if (!tracker) {
     step = 'création du salon de suivi privé';
     tracker = await guild.channels.create({ name: STATE_NAME, type: ChannelType.GuildText, topic: MARKER,
       permissionOverwrites: [{ id: guild.id, deny: [P.ViewChannel] },
         { id: botId, type: 1, allow: [P.ViewChannel, P.SendMessages, P.ReadMessageHistory, P.EmbedLinks] }],
-      reason: 'Suivi privé de l’installation LS Custom' });
+      reason: 'Suivi privé de l’installation Route 68' });
     step = 'enregistrement du suivi privé';
     message = await tracker.send(encode(state));
   }
@@ -77,13 +77,13 @@ async function install(guild, botId, update) {
     await message.edit(encode(state));
     step = previous;
   };
-  await update('⏳ Installation LS Custom en cours. Tu peux garder Discord ouvert ; aucune autre commande n’est nécessaire.');
+  await update('⏳ Installation Route 68 en cours. Tu peux garder Discord ouvert ; aucune autre commande n’est nécessaire.');
   for (let i = model.roles.length - 1; i >= 0; i--) {
     if (!state.r[i]) {
       const role = model.roles[i];
       step = 'création du rôle ' + role.name;
       const created = await guild.roles.create({ name: role.name, color: role.color, hoist: role.hoist,
-        mentionable: false, permissions: BigInt(role.permissions), reason: 'Base LS Custom FR' });
+        mentionable: false, permissions: BigInt(role.permissions), reason: 'Base Route 68 FR' });
       state.r[i] = created.id;
       await save();
     }
@@ -95,7 +95,7 @@ async function install(guild, botId, update) {
   for (const roleId of state.r) {
     const role = guild.roles.cache.get(roleId);
     if (role.comparePositionTo(me.roles.highest) >= 0)
-      throw new Error('Déplace le rôle PlayWise au-dessus de TOUS les nouveaux rôles LS Custom, enregistre, puis relance /backupls.');
+      throw new Error('Déplace le rôle Route 68 au-dessus de TOUS les nouveaux rôles Route 68, enregistre, puis relance /backupls.');
   }
   // Reuse only the slots already held by LS roles, never assume positions 1..16.
   // A refused presentation order must not block independent channel permissions.
@@ -116,7 +116,7 @@ async function install(guild, botId, update) {
     for (const item of [cat, ...cat.channels]) {
       const index = items.indexOf(item);
       if (!state.c[index]) {
-        const options = { name: item.name, type: item.type, permissionOverwrites: convertOverwrites(item, guild, state.r), reason: 'Base LS Custom FR' };
+        const options = { name: item.name, type: item.type, permissionOverwrites: convertOverwrites(item, guild, state.r), reason: 'Base Route 68 FR' };
         if (item !== cat) options.parent = state.c[items.indexOf(cat)];
         if (item.type === ChannelType.GuildText) {
           options.topic = item.topic;
@@ -138,18 +138,18 @@ async function install(guild, botId, update) {
         state.m.push(index);
         await save();
       }
-      if ((index + 1) % 12 === 0) await update('⏳ LS Custom : ' + (index + 1) + '/' + items.length + ' salons et catégories prêts.');
+      if ((index + 1) % 12 === 0) await update('⏳ Route 68 : ' + (index + 1) + '/' + items.length + ' salons et catégories prêts.');
     }
   }
   state.done = true;
   await save();
-  await update('✅ **LS Custom installé !**\n69 salons (dont 8 vocaux), 12 catégories et 16 rôles.\nAttribue les grades dans les paramètres du serveur, puis complète horaires et tarifs. Les tickets, factures et journaux LS Custom restent manuels.\nLe salon privé de suivi permet d’éviter les doublons : conserve-le.' + (state.orderPending ? '\n⚠️ Discord a empêché le classement automatique : range les grades manuellement (Patron → Co-patron → Gérant → Responsable d’équipe → métiers → clients). Les accès aux salons sont configurés.' : ''));
+  await update('✅ **Route 68 installé !**\n69 salons (dont 8 vocaux), 12 catégories et 16 rôles.\nAttribue les grades dans les paramètres du serveur, puis complète horaires et tarifs. Les tickets, factures et journaux Route 68 restent manuels.\nLe salon privé de suivi permet d’éviter les doublons : conserve-le.' + (state.orderPending ? '\n⚠️ Discord a empêché le classement automatique : range les grades manuellement (Patron → Co-patron → Gérant → Responsable d’équipe → métiers → clients). Les accès aux salons sont configurés.' : ''));
   } catch (error) {
     if (Number(error.code) === 50013 || /Missing Permissions/i.test(error.message)) {
       console.error('[BACKUPLS PERMISSIONS]', step, error.code, error.method, error.url);
       const guidance = step === 'classement des rôles' || step.startsWith('création du rôle')
-        ? 'Dans Paramètres du serveur → Rôles, replace PlayWise au-dessus de tous les rôles LS Custom déjà créés et enregistre.'
-        : 'Vérifie que le rôle du bot PlayWise possède Administrateur et reste au-dessus des rôles LS Custom.';
+        ? 'Dans Paramètres du serveur → Rôles, replace Route 68 au-dessus de tous les rôles Route 68 déjà créés et enregistre.'
+        : 'Vérifie que le rôle du bot Route 68 possède Administrateur et reste au-dessus des rôles Route 68.';
       throw new Error('Discord refuse l’étape « ' + step + ' ». ' + guidance + ' Puis relance /backupls.');
     }
     throw error;
@@ -165,7 +165,7 @@ async function handle(interaction) {
     return true;
   }
   if (active.has(interaction.guild.id)) {
-    await interaction.reply({ content: '⏳ Une installation LS Custom est déjà en cours.', ephemeral: true });
+    await interaction.reply({ content: '⏳ Une installation Route 68 est déjà en cours.', ephemeral: true });
     return true;
   }
   if (slash) {
@@ -177,9 +177,9 @@ async function handle(interaction) {
       pending.set(key, { nonce, expires: Date.now() + 300000 });
       const timer = setTimeout(() => { if (pending.get(key)?.nonce === nonce) pending.delete(key); }, 300000);
       timer.unref?.();
-      await interaction.editReply({ content: '**Installer LS Custom dans « ' + interaction.guild.name + ' » ?**\n69 salons, 12 catégories, 16 rôles et leurs permissions.\nLes salons existants sont conservés. Aucun rôle n’est attribué automatiquement.\nLes rôles Patron et Co-patron ont des droits de gestion. Les administrateurs existants gardent accès aux salons privés.\nUn salon privé supplémentaire conserve le suivi. Confirmation valable 5 minutes.',
+      await interaction.editReply({ content: '**Installer Route 68 dans « ' + interaction.guild.name + ' » ?**\n69 salons, 12 catégories, 16 rôles et leurs permissions.\nLes salons existants sont conservés. Aucun rôle n’est attribué automatiquement.\nLes rôles Patron et Co-patron ont des droits de gestion. Les administrateurs existants gardent accès aux salons privés.\nUn salon privé supplémentaire conserve le suivi. Confirmation valable 5 minutes.',
         components: [new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('lsbackup:yes:' + nonce).setLabel('Installer LS Custom').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId('lsbackup:yes:' + nonce).setLabel('Installer Route 68').setStyle(ButtonStyle.Success),
           new ButtonBuilder().setCustomId('lsbackup:no:' + nonce).setLabel('Annuler').setStyle(ButtonStyle.Secondary))] });
     } catch (e) { await interaction.editReply({ content: '❌ ' + e.message, components: [] }); }
     return true;
