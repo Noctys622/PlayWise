@@ -57,7 +57,7 @@ async function install(guild, botId, update) {
       if (!guild.channels.cache.has(state.c[i])) throw new Error('Un salon déjà créé a été supprimé : ' + item.name);
     } else if (guild.channels.cache.some(c => c.name === item.name)) throw new Error('Salon existant non suivi : ' + item.name + '. Renomme-le avant de relancer.');
   }
-  if (state.done) { await update('✅ La base LS Custom est déjà installée. Aucun doublon créé.'); return; }
+  if (state.done) { await update('✅ La base LS Custom est déjà installée. Aucun doublon créé.' + (state.orderPending ? '\nLes grades restent à ranger manuellement dans Paramètres → Rôles.' : '')); return; }
   if (guild.channels.cache.size + items.filter((_, i) => !state.c[i]).length + (tracker ? 0 : 1) > 500)
     throw new Error('Pas assez de place dans ce serveur pour les salons LS Custom.');
   if (guild.roles.cache.size + model.roles.filter((_, i) => !state.r[i]).length > 250)
@@ -97,7 +97,21 @@ async function install(guild, botId, update) {
     if (role.comparePositionTo(me.roles.highest) >= 0)
       throw new Error('Déplace le rôle PlayWise au-dessus de TOUS les nouveaux rôles LS Custom, enregistre, puis relance /backupls.');
   }
-  await guild.roles.setPositions(model.roles.map((_, i) => ({ role: state.r[i], position: model.roles.length - i })));
+  // Reuse only the slots already held by LS roles, never assume positions 1..16.
+  // A refused presentation order must not block independent channel permissions.
+  const positions = state.r.map(id => guild.roles.cache.get(id).position).sort((a, b) => b - a);
+  state.orderPending = false;
+  try {
+    await guild.roles.setPositions(model.roles.map((_, i) => ({ role: state.r[i], position: positions[i] })));
+    await guild.roles.fetch();
+    state.orderPending = state.r.some((id, i) => i > 0 &&
+      guild.roles.cache.get(state.r[i - 1]).comparePositionTo(guild.roles.cache.get(id)) <= 0);
+  } catch (error) {
+    if (Number(error.code) !== 50013 && !/Missing Permissions/i.test(error.message)) throw error;
+    state.orderPending = true;
+    console.warn('[BACKUPLS] Role ordering denied; continuing channel installation.');
+  }
+  await save();
   for (const cat of model.categories) {
     for (const item of [cat, ...cat.channels]) {
       const index = items.indexOf(item);
@@ -129,7 +143,7 @@ async function install(guild, botId, update) {
   }
   state.done = true;
   await save();
-  await update('✅ **LS Custom installé !**\n69 salons (dont 8 vocaux), 12 catégories et 16 rôles.\nAttribue les grades dans les paramètres du serveur, puis complète horaires et tarifs. Les tickets, factures et journaux LS Custom restent manuels.\nLe salon privé de suivi permet d’éviter les doublons : conserve-le.');
+  await update('✅ **LS Custom installé !**\n69 salons (dont 8 vocaux), 12 catégories et 16 rôles.\nAttribue les grades dans les paramètres du serveur, puis complète horaires et tarifs. Les tickets, factures et journaux LS Custom restent manuels.\nLe salon privé de suivi permet d’éviter les doublons : conserve-le.' + (state.orderPending ? '\n⚠️ Discord a empêché le classement automatique : range les grades manuellement (Patron → Co-patron → Gérant → Responsable d’équipe → métiers → clients). Les accès aux salons sont configurés.' : ''));
   } catch (error) {
     if (Number(error.code) === 50013 || /Missing Permissions/i.test(error.message)) {
       console.error('[BACKUPLS PERMISSIONS]', step, error.code, error.method, error.url);
