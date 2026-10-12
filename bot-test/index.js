@@ -1,5 +1,6 @@
 const http = require('http');
 const lsBackup = require('./ls-backup');
+const illegalBackup = require('./illegal-backup');
 const lsFeatures = require('./ls-features');
 const { withTicketLock, fetchTranscriptMessages } = require('./ticket-core');
 const {
@@ -483,6 +484,7 @@ function buildTicketPanel() {
 
 const commands = [
   lsBackup.command,
+  illegalBackup.command,
   ...lsFeatures.commands,
   new SlashCommandBuilder().setName('setpdp').setDescription('Change la photo du bot sur ce serveur').setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addAttachmentOption(o => o.setName('image').setDescription('PNG, JPG ou WEBP (2 Mo max)').setRequired(true)),
@@ -607,6 +609,7 @@ client.on('guildCreate', async guild => {
 
 async function handleInteraction(interaction) {
   try {
+    if (await illegalBackup.handle(interaction)) return;
     if (interaction.isChatInputCommand() && ['setpdp', 'resetpdp'].includes(interaction.commandName)) {
       if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator))
         return interaction.reply({ content: '❌ Réservé aux administrateurs.', ephemeral: true });
