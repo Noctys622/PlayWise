@@ -1,5 +1,6 @@
 const http = require('http');
 const lsBackup = require('./ls-backup');
+const lsFeatures = require('./ls-features');
 const { withTicketLock, fetchTranscriptMessages } = require('./ticket-core');
 const {
   Client,
@@ -26,6 +27,7 @@ const client = new Client({
   allowedMentions: { parse: [], repliedUser: false },
   intents: [
     GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.DirectMessages,
     GatewayIntentBits.MessageContent
@@ -481,6 +483,7 @@ function buildTicketPanel() {
 
 const commands = [
   lsBackup.command,
+  ...lsFeatures.commands,
   new SlashCommandBuilder().setName('setpdp').setDescription('Change la photo du bot sur ce serveur').setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addAttachmentOption(o => o.setName('image').setDescription('PNG, JPG ou WEBP (2 Mo max)').setRequired(true)),
   new SlashCommandBuilder().setName('resetpdp').setDescription('Restaure la photo globale du bot').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
@@ -576,6 +579,7 @@ async function refreshTicketPanels(guild) {
   }
 }
 
+lsFeatures.attach(client);
 client.once(Events.ClientReady, async () => {
   console.log('[DISCORD] Connecté en tant que', client.user.tag);
   for (const guild of client.guilds.cache.values()) {
@@ -626,6 +630,7 @@ async function handleInteraction(interaction) {
         return interaction.editReply('❌ Discord a refusé la modification. Vérifie que cette fonctionnalité est disponible pour ton bot.');
       }
     }
+    if (await lsFeatures.handle(interaction)) return;
     if (await lsBackup.handle(interaction)) return;
     if (interaction.isButton() && interaction.customId === 'claim_dm_ticket') {
       const data = parseTicketTopic(interaction.channel?.topic || '');
@@ -829,6 +834,9 @@ async function handleInteraction(interaction) {
           '/ticketinfo — infos du ticket actuel',
           '/backupls — installer LS Custom (propriétaire)',
           '/setpdp • /resetpdp — avatar par serveur (admin)',
+          '/setautorole • /setwelcome • /setlog — configuration LS',
+          '/lsconfig • /lsreset — paramètres LS',
+          '/recrutement • /lsannonce • /lsstaff — garage LS',
           '/kick • /ban — modération',
           '/timeout • /untimeout — timeout',
           '/slowmode — mode lent',
