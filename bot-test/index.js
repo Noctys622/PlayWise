@@ -491,6 +491,9 @@ const commands = [
   new SlashCommandBuilder().setName('setpdp').setDescription('Change la photo du bot sur ce serveur').setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addAttachmentOption(o => o.setName('image').setDescription('PNG, JPG ou WEBP (2 Mo max)').setRequired(true)),
   new SlashCommandBuilder().setName('resetpdp').setDescription('Restaure la photo globale du bot').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder().setName('setbanner').setDescription('Change la bannière globale du profil du bot').setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addAttachmentOption(o => o.setName('image').setDescription('PNG, JPG ou WEBP (2 Mo max)').setRequired(true)),
+  new SlashCommandBuilder().setName('resetbanner').setDescription('Supprime la bannière globale du bot').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName('ping').setDescription('Affiche la latence du bot'),
   new SlashCommandBuilder().setName('help').setDescription('Affiche les commandes'),
   new SlashCommandBuilder().setName('serverinfo').setDescription('Informations sur le serveur'),
@@ -631,6 +634,29 @@ async function handleInteraction(interaction) {
       } catch (error) {
         console.error('[AVATAR]', error);
         return interaction.editReply('❌ Discord a refusé la modification. Vérifie que cette fonctionnalité est disponible pour ton bot.');
+      }
+    }
+    if (interaction.isChatInputCommand() && ['setbanner', 'resetbanner'].includes(interaction.commandName)) {
+      if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator))
+        return interaction.reply({ content: '❌ Réservé aux administrateurs.', ephemeral: true });
+      await interaction.deferReply({ ephemeral: true });
+      try {
+        let banner = null;
+        if (interaction.commandName === 'setbanner') {
+          const file = interaction.options.getAttachment('image', true);
+          if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.contentType) || file.size > 2 * 1024 * 1024)
+            return interaction.editReply('❌ Utilise une image PNG, JPG ou WEBP de moins de 2 Mo.');
+          const response = await fetch(file.url);
+          if (!response.ok) throw new Error('Image inaccessible');
+          const bytes = Buffer.from(await response.arrayBuffer());
+          if (bytes.length > 2 * 1024 * 1024) return interaction.editReply('❌ Image trop volumineuse.');
+          banner = 'data:' + file.contentType + ';base64,' + bytes.toString('base64');
+        }
+        await client.rest.patch('/users/@me', { body: { banner } });
+        return interaction.editReply(banner ? '✅ Bannière globale du bot modifiée. Elle sera visible sur tous les serveurs.' : '✅ Bannière globale du bot supprimée.');
+      } catch (error) {
+        console.error('[BANNER]', error);
+        return interaction.editReply('❌ Discord a refusé la modification de la bannière. Cette fonctionnalité peut être indisponible pour les bots.');
       }
     }
     if (await lsFeatures.handle(interaction)) return;
