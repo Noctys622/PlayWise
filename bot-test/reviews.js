@@ -28,9 +28,10 @@ async function handle(interaction) {
     const modal = new ModalBuilder().setCustomId('pw_avis_submit:' + interaction.channelId).setTitle('Laisser un avis');
     const note = new TextInputBuilder().setCustomId('note').setLabel('Note de 1 à 5').setStyle(TextInputStyle.Short)
       .setPlaceholder('5').setMinLength(1).setMaxLength(1).setRequired(true);
+    const commande = new TextInputBuilder().setCustomId('commande').setLabel('Produit ou service commandé').setStyle(TextInputStyle.Short).setMinLength(2).setMaxLength(150).setRequired(true);
     const avis = new TextInputBuilder().setCustomId('avis').setLabel('Votre avis').setStyle(TextInputStyle.Paragraph)
       .setPlaceholder('Racontez votre expérience...').setMinLength(3).setMaxLength(1000).setRequired(true);
-    modal.addComponents(new ActionRowBuilder().addComponents(note), new ActionRowBuilder().addComponents(avis));
+    modal.addComponents(new ActionRowBuilder().addComponents(note), new ActionRowBuilder().addComponents(commande), new ActionRowBuilder().addComponents(avis));
     return interaction.showModal(modal);
   }
   if (interaction.isModalSubmit() && interaction.customId.startsWith('pw_avis_submit:')) {
