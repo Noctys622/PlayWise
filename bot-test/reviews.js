@@ -43,7 +43,7 @@ async function handle(interaction) {
     const channel = await interaction.guild?.channels.fetch(channelId).catch(() => null);
     if (!channel?.isTextBased() || !channel.send)
       return interaction.editReply('❌ Salon des avis introuvable.');
-    const embed = new EmbedBuilder().setColor(0xFF8C32)
+    const embed = new EmbedBuilder().setColor(0x5865F2)
       .setAuthor({ name: interaction.user.username, iconURL: interaction.user.displayAvatarURL() })
       .setTitle('⭐'.repeat(Number(note)))
       .setDescription('« ' + avis.replace(/@/g, '@\u200b') + ' »')
