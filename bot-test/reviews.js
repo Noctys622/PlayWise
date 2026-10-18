@@ -50,7 +50,7 @@ async function handle(interaction) {
       .setThumbnail(interaction.user.displayAvatarURL())
       .setFooter({ text: 'Avis membre • ' + note + '/5' }).setTimestamp();
     try {
-      await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+      await channel.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('pw_avis_open').setLabel('Laisser mon avis').setEmoji('⭐').setStyle(ButtonStyle.Primary))], allowedMentions: { parse: [] } });
       return interaction.editReply('✅ Ton avis a été publié !');
     } catch (error) {
       console.error('[AVIS]', error);
