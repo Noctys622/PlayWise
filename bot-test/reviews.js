@@ -14,8 +14,15 @@ async function handle(interaction) {
     const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('pw_avis_open')
       .setLabel('Laisser mon avis').setEmoji('⭐').setStyle(ButtonStyle.Primary));
     await interaction.deferReply({ ephemeral: true });
-    await interaction.channel.send({ embeds: [embed], components: [row] });
-    return interaction.editReply('✅ Panneau des avis publié.');
+    try {
+      await interaction.channel.send({ embeds: [embed], components: [row] });
+      return interaction.editReply('✅ Panneau des avis publié.');
+    } catch (error) {
+      console.error('[AVIS PANEL]', error);
+      if (error.code === 50013 || error.code === 50001)
+        return interaction.editReply('❌ Je ne peux pas publier dans ce salon. Donne-moi les permissions Voir le salon, Envoyer des messages et Intégrer des liens.');
+      return interaction.editReply('❌ Impossible de publier le panneau des avis.');
+    }
   }
   if (interaction.isButton() && interaction.customId === 'pw_avis_open') {
     const modal = new ModalBuilder().setCustomId('pw_avis_submit:' + interaction.channelId).setTitle('Laisser un avis');
