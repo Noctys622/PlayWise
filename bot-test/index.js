@@ -36,7 +36,7 @@ const client = new Client({
   ],
   partials: [Partials.Channel],
   presence: {
-    activities: [{ name: '/help • Route 68', type: ActivityType.Playing }],
+    activities: [{ name: 'At your service', type: ActivityType.Playing }],
     status: 'online'
   }
 });
@@ -590,7 +590,7 @@ lsFeatures.attach(client);
 client.once(Events.ClientReady, async () => {
   console.log('[DISCORD] Connecté en tant que', client.user.tag);
   client.user.setPresence({
-    activities: [{ name: '/help • Route 68', type: ActivityType.Playing }],
+    activities: [{ name: 'At your service', type: ActivityType.Playing }],
     status: 'online'
   });
 
