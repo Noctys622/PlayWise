@@ -1,5 +1,6 @@
 const http = require('http');
 const lsBackup = require('./ls-backup');
+const reviews = require('./reviews');
 const illegalBackup = require('./illegal-backup');
 const lsFeatures = require('./ls-features');
 const { withTicketLock, fetchTranscriptMessages } = require('./ticket-core');
@@ -483,6 +484,7 @@ function buildTicketPanel() {
 }
 
 const commands = [
+  reviews.command,
   lsBackup.command,
   illegalBackup.command,
   ...lsFeatures.commands,
@@ -609,6 +611,7 @@ client.on('guildCreate', async guild => {
 
 async function handleInteraction(interaction) {
   try {
+    if (await reviews.handle(interaction)) return;
     if (await illegalBackup.handle(interaction)) return;
     if (interaction.isChatInputCommand() && ['setpdp', 'resetpdp'].includes(interaction.commandName)) {
       if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator))
