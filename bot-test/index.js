@@ -586,9 +586,6 @@ async function refreshTicketPanels(guild) {
 lsFeatures.attach(client);
 client.once(Events.ClientReady, async () => {
   console.log('[DISCORD] Connecté en tant que', client.user.tag);
-  for (const guild of client.guilds.cache.values()) {
-    try { await guild.members.me?.setNickname('Route 68'); } catch {}
-  }
   client.user.setPresence({
     activities: [{ name: '/help • Route 68', type: ActivityType.Playing }],
     status: 'online'
