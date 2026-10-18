@@ -36,8 +36,10 @@ async function handle(interaction) {
   }
   if (interaction.isModalSubmit() && interaction.customId.startsWith('pw_avis_submit:')) {
     const note = interaction.fields.getTextInputValue('note').trim();
+    const commande = interaction.fields.getTextInputValue('commande').trim();
     const avis = interaction.fields.getTextInputValue('avis').trim();
     if (!/^[1-5]$/.test(note)) return interaction.reply({ content: '❌ Indique une note de 1 à 5.', ephemeral: true });
+    if (commande.length < 2 || commande.length > 150) return interaction.reply({ content: 'Indique le produit ou service commandé.', ephemeral: true });
     if (avis.length < 3) return interaction.reply({ content: '❌ Avis trop court.', ephemeral: true });
     await interaction.deferReply({ ephemeral: true });
     const channelId = interaction.customId.split(':')[1];
@@ -48,6 +50,7 @@ async function handle(interaction) {
       .setAuthor({ name: interaction.user.username, iconURL: interaction.user.displayAvatarURL() })
       .setTitle('⭐'.repeat(Number(note)))
       .setDescription('« ' + avis.replace(/@/g, '@\u200b') + ' »')
+      .addFields({ name: '📦 Commande', value: commande.replace(/@/g, '@\u200b'), inline: false })
       .setThumbnail(interaction.user.displayAvatarURL())
       .setFooter({ text: 'Avis membre • ' + note + '/5' }).setTimestamp();
     try {
