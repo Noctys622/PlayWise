@@ -1,5 +1,6 @@
 const http = require('http');
 const lsBackup = require('./ls-backup');
+const tempBackup = require('./temp-backup');
 const reviews = require('./reviews');
 const illegalBackup = require('./illegal-backup');
 const lsFeatures = require('./ls-features');
@@ -486,6 +487,7 @@ function buildTicketPanel() {
 const commands = [
   reviews.command,
   lsBackup.command,
+  tempBackup.command,
   illegalBackup.command,
   ...lsFeatures.commands,
   new SlashCommandBuilder().setName('setpdp').setDescription('Change la photo du bot sur ce serveur').setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
@@ -611,6 +613,7 @@ client.on('guildCreate', async guild => {
 
 async function handleInteraction(interaction) {
   try {
+    if (await tempBackup.handle(interaction)) return;
     if (await reviews.handle(interaction)) return;
     if (await illegalBackup.handle(interaction)) return;
     if (interaction.isChatInputCommand() && ['setpdp', 'resetpdp'].includes(interaction.commandName)) {
@@ -862,6 +865,7 @@ async function handleInteraction(interaction) {
           '/ticketpanel — envoyer le panneau de tickets (staff)',
           '/ticketinfo — infos du ticket actuel',
           '/backupls — installer Route 68 (propriétaire)',
+          '/backuptemp — créer les salons de stockage GTA RP (admin)',
           '/setpdp • /resetpdp — avatar par serveur (admin)',
           '/setautorole • /setwelcome • /setlog — configuration LS',
           '/lsconfig • /lsreset — paramètres LS',
