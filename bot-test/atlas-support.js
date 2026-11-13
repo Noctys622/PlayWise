@@ -108,7 +108,7 @@ async function handle(interaction) {
     ];
     if (support) overwrites.push({ id: support.id, allow });
     const channel = await guild.channels.create({
-      name: 'ticket-' + interaction.user.username.toLowerCase().replace(/[^a-z0-9-]/g,'-').slice(0, 24) + '-' + interaction.user.id.slice(-4),
+      name: interaction.user.username.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'membre',
       type: ChannelType.GuildText,
       parent: category.id,
       topic: 'ATLAS_TICKET:' + interaction.user.id,
