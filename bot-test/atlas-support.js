@@ -93,7 +93,9 @@ async function handle(interaction) {
     await guild.channels.fetch();
     const existing = guild.channels.cache.find(c => c.type === ChannelType.GuildText && ticketOwner(c) === interaction.user.id);
     if (existing) return interaction.editReply({ content: '🎫 Tu as déjà un ticket ouvert : ' + existing.toString() });
-    const source = interaction.channel;
+    const category = await guild.channels.fetch(PANEL_CHANNEL_ID).catch(() => null);
+    if (!category || category.type !== ChannelType.GuildCategory)
+      return interaction.editReply({ content: '❌ Catégorie de tickets introuvable : `'+ '1570930108339060898' +'`. Vérifie que cet ID correspond bien à une catégorie de ce serveur.' });
     const support = await guild.roles.fetch(SUPPORT_ROLE_ID).catch(() => null);
     const me = await guild.members.fetchMe();
     if (!me.permissions.has(PermissionFlagsBits.ManageChannels))
@@ -108,7 +110,7 @@ async function handle(interaction) {
     const channel = await guild.channels.create({
       name: 'ticket-' + interaction.user.username.toLowerCase().replace(/[^a-z0-9-]/g,'-').slice(0, 24) + '-' + interaction.user.id.slice(-4),
       type: ChannelType.GuildText,
-      parent: source?.parentId || null,
+      parent: category.id,
       topic: 'ATLAS_TICKET:' + interaction.user.id,
       permissionOverwrites: overwrites,
       reason: 'Ticket Atlas Studio ouvert par ' + interaction.user.username
