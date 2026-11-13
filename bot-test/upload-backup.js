@@ -23,19 +23,19 @@ const ROLE_SPECS = [
 const GROUPS = [
   {name: 'Staff', privateCategory: true, channels: [
     t('📢・announcements', true), t('🧩・infos', true),
-    t('━━━━━━━━━━━━', true),
+    v('━━━━━━━━━━━━', true),
     t('💬・discussion-support', true), t('💬・discussion-manager', true, true),
-    t('━━━━━━━━━━━━━', true),
+    v('━━━━━━━━━━━━━', true),
     t('📁・report-bug', true), t('📁・resources', true), t('📁・github', true),
-    t('━━━━━━━━━━━━━━', true),
+    v('━━━━━━━━━━━━━━', true),
     t('🛡️・vocal-anticheat', true), t('⚙️・ticket-notif', true), v('🐍・report-bug', true),
-    t('━━━━━━━━━━━━━━━', true),
+    v('━━━━━━━━━━━━━━━', true),
     v('🔊・Bureau 1', true), v('🔊・Bureau 2', true),
-    t('━━━━━━━━━━━━━━━━', true),
+    v('━━━━━━━━━━━━━━━━', true),
     v('🔊・Admin 1', true), v('🔊・Admin 2', true)
   ]},
   {name: 'Workspace', privateCategory: true, channels: [
-    v('🔨・Workspace 1', true), v('🔨・Workspace 2', true),
+    v('━━━━━━━━━━━━', true), v('🔨・Workspace 1', true), v('🔨・Workspace 2', true),
     v('🔨・Workspace 3', true), v('⏳・Waiting For Moove', true)
   ]},
   {name: 'Addveo Hub', channels: [
@@ -75,6 +75,38 @@ function overwrites(guild, privateChannel, managerOnly = false) {
 
 // Cette commande est destructrice : une confirmation écrite est obligatoire.
 // Le snapshot envoyé en MP contient les noms/permissions, jamais les messages.
+// Permissions vocales explicites : Support = Workspace et Admin 1/2 uniquement.
+// Director, Head of Content, Developer et Staff Manager peuvent accéder à tous
+// les salons vocaux Staff et Workspace. Customers et Visitors n'y ont pas accès.
+function voiceOverwrites(guild, groupName, channelName) {
+  const rules = [
+    {id: guild.id, deny: [
+      PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect
+    ]}
+  ];
+  const staffFull = new Set(['Director', 'Head of Content', 'Developer', 'Staff Manager']);
+  const supportAllowed = groupName === 'Workspace' || /^🔊・Admin [12]$/.test(channelName);
+  for (const role of guild.roles.cache.values()) {
+    if (role.id === guild.id || role.managed) continue;
+    if (staffFull.has(role.name)) {
+      rules.push({id: role.id, allow: [
+        PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect,
+        PermissionFlagsBits.Speak, PermissionFlagsBits.Stream
+      ]});
+    } else if (role.name === 'Customer Support') {
+      rules.push(supportAllowed
+        ? {id: role.id, allow: [
+          PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect,
+          PermissionFlagsBits.Speak, PermissionFlagsBits.Stream
+        ]}
+        : {id: role.id, deny: [
+          PermissionFlagsBits.ViewChannel, PermissionFlagsBits.Connect
+        ]});
+    }
+  }
+  return rules;
+}
+
 async function handle(interaction) {
   const isCommand = interaction.isChatInputCommand() && interaction.commandName === 'backupload';
   const isButton = interaction.isButton() && interaction.customId.startsWith('backupload:');
@@ -245,7 +277,9 @@ async function handle(interaction) {
       for (const channel of group.channels) {
         await guild.channels.create({
           name: channel.name, type: channel.type, parent: category.id,
-          permissionOverwrites: overwrites(guild, !!channel.privateChannel, !!channel.managerOnly),
+          permissionOverwrites: channel.type === VOICE
+            ? voiceOverwrites(guild, group.name, channel.name)
+            : overwrites(guild, !!channel.privateChannel, !!channel.managerOnly),
           reason: 'Reconstruction /backupload'
         });
         channels++;
@@ -255,7 +289,7 @@ async function handle(interaction) {
     const result = '✅ **Réinitialisation terminée sur ' + guild.name + '** : ' +
       deletedChannels + ' anciens salons et ' + deletedRoles + ' anciens rôles supprimés ; ' +
       rolesCreated + ' rôles, ' + categories + ' catégories et ' + channels + ' salons créés.\n' +
-      'Les nouveaux rôles ne sont pas automatiquement attribués aux membres. ' +
+      'Les nouveaux rôles ne sont pas automatiquement attribués aux membres. Les Customer Support ont accès uniquement aux vocaux Workspace et Admin 1/2. ' +
       'Vérifie les permissions, la hiérarchie et les paramètres des autres bots.';
     await dm.send(result).catch(() => {});
     await interaction.editReply(result).catch(() => {});
