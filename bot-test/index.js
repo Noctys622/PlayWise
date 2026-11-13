@@ -570,7 +570,7 @@ const commands = [
     .addStringOption(o => o.setName('message').setDescription('Message').setRequired(true)),
   new SlashCommandBuilder().setName('membercount').setDescription('Affiche le nombre de membres'),
   new SlashCommandBuilder().setName('ticketinfo').setDescription('Affiche les infos du ticket actuel')
-].map(c => c.setDMPermission(false).toJSON());
+].map(c => typeof c.toJSON === 'function' ? c.setDMPermission(false).toJSON() : c);
 
 async function refreshTicketPanels(guild) {
   for (const channel of guild.channels.cache.values()) {
