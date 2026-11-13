@@ -1,6 +1,7 @@
 const {
   SlashCommandBuilder, PermissionFlagsBits, ChannelType,
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags,
+  ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder
 } = require('discord.js');
 
 // Modèle basé sur les captures fournies. Les séparateurs sont des salons textuels.
@@ -72,111 +73,200 @@ function overwrites(guild, privateChannel, managerOnly = false) {
   ];
 }
 
+// Cette commande est destructrice : une confirmation écrite est obligatoire.
+// Le snapshot envoyé en MP contient les noms/permissions, jamais les messages.
 async function handle(interaction) {
   const isCommand = interaction.isChatInputCommand() && interaction.commandName === 'backupload';
   const isButton = interaction.isButton() && interaction.customId.startsWith('backupload:');
-  if (!isCommand && !isButton) return false;
+  const isModal = interaction.isModalSubmit() && interaction.customId.startsWith('backupload:execute:');
+  if (!isCommand && !isButton && !isModal) return false;
 
   if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
-    await interaction.reply({content: '❌ Commande réservée aux administrateurs.', flags: MessageFlags.Ephemeral});
+    await interaction.reply({content: '❌ Réservé aux administrateurs du serveur.', flags: MessageFlags.Ephemeral});
     return true;
   }
 
   if (isCommand) {
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('backupload:confirm:' + interaction.user.id).setLabel('Installer la structure').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('backupload:cancel:' + interaction.user.id).setLabel('Annuler').setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId('backupload:confirm:' + interaction.user.id)
+        .setLabel('Tout supprimer et reconstruire').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('backupload:cancel:' + interaction.user.id)
+        .setLabel('Annuler').setStyle(ButtonStyle.Secondary)
     );
-    const count = GROUPS.reduce((total, group) => total + group.channels.length, 0);
     await interaction.reply({
-      content: '📦 Installer jusqu’à **' + ROLE_SPECS.length + ' rôles**, **' + GROUPS.length + ' catégories** et **' + count +
-        ' salons** sur **' + interaction.guild.name + '** ?\n' +
-        'Aucun salon ni rôle existant ne sera supprimé. Les salons privés seront réservés aux rôles staff/manager reconnus et aux administrateurs. Vérifie les permissions après installation.',
+      content: '⚠️ **RÉINITIALISATION COMPLÈTE de ' + interaction.guild.name + '**\n' +
+        'Cette action SUPPRIME DÉFINITIVEMENT tous les salons et leurs messages, ainsi que tous les rôles supprimables et leurs attributions. ' +
+        'Puis elle recrée ' + ROLE_SPECS.length + ' rôles, ' + GROUPS.length + ' catégories et ' +
+        GROUPS.reduce((n, g) => n + g.channels.length, 0) + ' salons.\n' +
+        'Les rôles @everyone et ceux gérés par Discord/les bots ne peuvent pas être supprimés. ' +
+        'Un récapitulatif de la structure actuelle sera envoyé en MP avant toute suppression (sans les messages).\n' +
+        '**Ne continue pas si tu veux conserver les anciens messages ou permissions.**',
       components: [row],
       flags: MessageFlags.Ephemeral
     });
     return true;
   }
 
-  const [, action, userId] = interaction.customId.split(':');
+  if (isButton) {
+    const [, action, userId] = interaction.customId.split(':');
+    if (interaction.user.id !== userId) {
+      await interaction.reply({content: '❌ Cette confirmation ne vous appartient pas.', flags: MessageFlags.Ephemeral});
+      return true;
+    }
+    if (action === 'cancel') {
+      await interaction.update({content: 'Réinitialisation annulée. Aucun changement effectué.', components: []});
+      return true;
+    }
+    if (action !== 'confirm') return true;
+    const modal = new ModalBuilder()
+      .setCustomId('backupload:execute:' + interaction.user.id)
+      .setTitle('Confirmation de réinitialisation');
+    const input = new TextInputBuilder()
+      .setCustomId('confirmation')
+      .setLabel('Écris SUPPRIMER pour confirmer')
+      .setPlaceholder('SUPPRIMER')
+      .setRequired(true)
+      .setMinLength(9)
+      .setMaxLength(9)
+      .setStyle(TextInputStyle.Short);
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+    await interaction.showModal(modal);
+    return true;
+  }
+
+  const userId = interaction.customId.split(':')[2];
   if (interaction.user.id !== userId) {
-    await interaction.reply({content: '❌ Cette confirmation appartient à un autre utilisateur.', flags: MessageFlags.Ephemeral});
+    await interaction.reply({content: '❌ Confirmation invalide.', flags: MessageFlags.Ephemeral});
     return true;
   }
-  if (action === 'cancel') {
-    await interaction.update({content: 'Installation annulée.', components: []});
+  if (interaction.fields.getTextInputValue('confirmation').trim() !== 'SUPPRIMER') {
+    await interaction.reply({content: '❌ Mot de confirmation incorrect. Aucun changement effectué.', flags: MessageFlags.Ephemeral});
     return true;
   }
-  if (action !== 'confirm') return true;
   if (running.has(interaction.guildId)) {
-    await interaction.reply({content: '⏳ Une installation est déjà en cours.', flags: MessageFlags.Ephemeral});
+    await interaction.reply({content: '⏳ Une réinitialisation est déjà en cours.', flags: MessageFlags.Ephemeral});
     return true;
   }
 
   running.add(interaction.guildId);
-  await interaction.update({content: '⏳ Création des rôles, catégories et salons en cours…', components: []});
-  let rolesCreated = 0, rolesExisting = 0, categories = 0, channels = 0, skipped = 0;
+  await interaction.deferReply({flags: MessageFlags.Ephemeral});
+  const guild = interaction.guild;
+  let deletedChannels = 0, deletedRoles = 0, rolesCreated = 0, categories = 0, channels = 0;
+  let dm = null;
   try {
-    const guild = interaction.guild;
     const bot = await guild.members.fetchMe();
-    if (!bot.permissions.has(PermissionFlagsBits.ManageChannels) || !bot.permissions.has(PermissionFlagsBits.ManageRoles))
-      throw new Error('Le bot doit posséder les permissions Gérer les salons et Gérer les rôles.');
+    if (!bot.permissions.has(PermissionFlagsBits.ManageChannels) ||
+        !bot.permissions.has(PermissionFlagsBits.ManageRoles))
+      throw new Error('Le bot doit posséder Gérer les salons et Gérer les rôles.');
     await guild.channels.fetch();
     await guild.roles.fetch();
 
-    // Create from lowest to highest for the intended display hierarchy.
-    // Existing roles retain their permissions and positions.
+    const rolesToDelete = [...guild.roles.cache.values()]
+      .filter(role => role.id !== guild.id && !role.managed);
+    const blocked = rolesToDelete.filter(role => bot.roles.highest.comparePositionTo(role) <= 0);
+    if (blocked.length)
+      throw new Error('Impossible de supprimer certains rôles au-dessus du bot : ' +
+        blocked.map(role => role.name).slice(0, 8).join(', ') +
+        '. Place le rôle du bot plus haut dans la hiérarchie, puis réessaie.');
+
+    // Certains salons communautaires doivent être dissociés des réglages Discord.
+    const protectedIds = [guild.rulesChannelId, guild.publicUpdatesChannelId, guild.safetyAlertsChannelId]
+      .filter(Boolean);
+    if (protectedIds.some(id => guild.channels.cache.has(id)))
+      throw new Error('Ce serveur possède des salons configurés comme règles/annonces de communauté/sécurité. ' +
+        'Dissocie-les dans les paramètres du serveur avant de lancer la réinitialisation.');
+
+    const existingChannels = [...guild.channels.cache.values()];
+    for (const ch of existingChannels) {
+      if (!ch.manageable) throw new Error('Le bot ne peut pas gérer le salon : ' + ch.name);
+    }
+
+    const snapshot = {
+      server: guild.name,
+      createdAt: new Date().toISOString(),
+      note: 'Sauvegarde de structure uniquement. Les messages ne sont PAS sauvegardés.',
+      roles: [...guild.roles.cache.values()].map(role => ({
+        id: role.id, name: role.name, color: role.hexColor, position: role.position,
+        permissions: role.permissions.bitfield.toString(), managed: role.managed
+      })),
+      channels: existingChannels.map(ch => ({
+        id: ch.id, name: ch.name, type: ch.type, parentId: ch.parentId,
+        permissionOverwrites: [...ch.permissionOverwrites.cache.values()].map(p => ({
+          id: p.id, type: p.type, allow: p.allow.bitfield.toString(), deny: p.deny.bitfield.toString()
+        }))
+      }))
+    };
+    const archive = new AttachmentBuilder(Buffer.from(JSON.stringify(snapshot, null, 2), 'utf8'), {
+      name: 'structure-avant-backupload.json'
+    });
+    try {
+      dm = await interaction.user.createDM();
+      await dm.send({
+        content: '⚠️ Réinitialisation demandée sur **' + guild.name +
+          '**. Voici la structure précédente (salons, rôles et permissions, sans les messages).',
+        files: [archive]
+      });
+    } catch {
+      throw new Error('Impossible de t’envoyer la sauvegarde de structure en MP. Ouvre tes MP puis réessaie. Rien n’a été supprimé.');
+    }
+
+    // Les enfants d'abord, puis les catégories.
+    const ordered = existingChannels.sort((a, b) =>
+      Number(a.type === ChannelType.GuildCategory) - Number(b.type === ChannelType.GuildCategory)
+    );
+    for (const ch of ordered) {
+      await ch.delete('Réinitialisation /backupload confirmée');
+      deletedChannels++;
+    }
+    for (const role of rolesToDelete.sort((a, b) => b.position - a.position)) {
+      await role.delete('Réinitialisation /backupload confirmée');
+      deletedRoles++;
+    }
+
+    // Discord conserve @everyone et les rôles gérés par les intégrations.
+    await guild.roles.fetch();
     for (const spec of [...ROLE_SPECS].reverse()) {
-      if (guild.roles.cache.some(role => role.name.toLowerCase() === spec.name.toLowerCase())) {
-        rolesExisting++;
-        continue;
-      }
       await guild.roles.create({
-        name: spec.name,
-        color: spec.color,
-        hoist: true,
-        mentionable: false,
-        permissions: 0n,
-        reason: 'Backup Addveo /backupload'
+        name: spec.name, color: spec.color, hoist: true, mentionable: false,
+        permissions: 0n, reason: 'Reconstruction /backupload'
       });
       rolesCreated++;
     }
+    await guild.roles.fetch();
 
     for (const group of GROUPS) {
-      let category = guild.channels.cache.find(c => c.type === ChannelType.GuildCategory && c.name === group.name);
-      if (!category) {
-        category = await guild.channels.create({
-          name: group.name,
-          type: ChannelType.GuildCategory,
-          permissionOverwrites: overwrites(guild, !!group.privateCategory),
-          reason: 'Backup Addveo /backupload'
-        });
-        categories++;
-      }
+      const category = await guild.channels.create({
+        name: group.name,
+        type: ChannelType.GuildCategory,
+        permissionOverwrites: overwrites(guild, !!group.privateCategory),
+        reason: 'Reconstruction /backupload'
+      });
+      categories++;
       for (const channel of group.channels) {
-        const exists = guild.channels.cache.some(c =>
-          c.type === channel.type && c.parentId === category.id && c.name === channel.name
-        );
-        if (exists) { skipped++; continue; }
         await guild.channels.create({
-          name: channel.name,
-          type: channel.type,
-          parent: category.id,
+          name: channel.name, type: channel.type, parent: category.id,
           permissionOverwrites: overwrites(guild, !!channel.privateChannel, !!channel.managerOnly),
-          reason: 'Backup Addveo /backupload'
+          reason: 'Reconstruction /backupload'
         });
         channels++;
       }
     }
-    await interaction.editReply('✅ Installation terminée : **' + rolesCreated + ' rôles**, **' +
-      categories + ' catégories** et **' + channels + ' salons** créés (' + rolesExisting +
-      ' rôles et ' + skipped + ' salons déjà présents). Aucun élément existant supprimé. ' +
-      'Les rôles ne sont pas attribués automatiquement aux membres. Vérifie la hiérarchie et les permissions des salons existants.');
+
+    const result = '✅ **Réinitialisation terminée sur ' + guild.name + '** : ' +
+      deletedChannels + ' anciens salons et ' + deletedRoles + ' anciens rôles supprimés ; ' +
+      rolesCreated + ' rôles, ' + categories + ' catégories et ' + channels + ' salons créés.\n' +
+      'Les nouveaux rôles ne sont pas automatiquement attribués aux membres. ' +
+      'Vérifie les permissions, la hiérarchie et les paramètres des autres bots.';
+    await dm.send(result).catch(() => {});
+    await interaction.editReply(result).catch(() => {});
   } catch (error) {
     console.error('[BACKUPLOAD]', error);
-    await interaction.editReply('⚠️ Installation interrompue après ' + rolesCreated + ' rôles, ' + categories +
-      ' catégories et ' + channels + ' salons : ' + String(error.message).slice(0, 250) +
-      '. Tu peux relancer /backupload : les salons existants seront conservés.').catch(() => {});
+    const message = '❌ Réinitialisation interrompue. ' +
+      deletedChannels + ' salons et ' + deletedRoles + ' rôles supprimés ; ' +
+      rolesCreated + ' rôles, ' + categories + ' catégories et ' + channels + ' salons recréés.\n' +
+      String(error.message).slice(0, 350);
+    if (dm) await dm.send(message).catch(() => {});
+    await interaction.editReply(message).catch(() => {});
   } finally {
     running.delete(interaction.guildId);
   }
