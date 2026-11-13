@@ -2,6 +2,7 @@ const http = require('http');
 const lsBackup = require('./ls-backup');
 const tempBackup = require('./temp-backup');
 const uploadBackup = require('./upload-backup');
+const atlas = require('./atlas-support');
 const reviews = require('./reviews');
 const illegalBackup = require('./illegal-backup');
 const lsFeatures = require('./ls-features');
@@ -492,6 +493,7 @@ const commands = [
   uploadBackup.command,
   illegalBackup.command,
   ...lsFeatures.commands,
+  ...atlas.commands,
   new SlashCommandBuilder().setName('setpdp').setDescription('Change la photo du bot sur ce serveur').setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addAttachmentOption(o => o.setName('image').setDescription('PNG, JPG ou WEBP (2 Mo max)').setRequired(true)),
   new SlashCommandBuilder().setName('resetpdp').setDescription('Restaure la photo globale du bot').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
@@ -591,6 +593,7 @@ async function refreshTicketPanels(guild) {
 }
 
 lsFeatures.attach(client);
+atlas.attach(client);
 client.once(Events.ClientReady, async () => {
   console.log('[DISCORD] Connecté en tant que', client.user.tag);
   client.user.setPresence({
@@ -615,6 +618,11 @@ client.on('guildCreate', async guild => {
 
 async function handleInteraction(interaction) {
   try {
+    if ((interaction.isChatInputCommand() && ['ticket', 'autorole'].includes(interaction.commandName)) ||
+        (interaction.isButton() && ['atlas_ticket_open', 'atlas_ticket_close'].includes(interaction.customId))) {
+      await atlas.handle(interaction);
+      return;
+    }
     if (await tempBackup.handle(interaction)) return;
     if (await uploadBackup.handle(interaction)) return;
     if (await reviews.handle(interaction)) return;
@@ -865,7 +873,9 @@ async function handleInteraction(interaction) {
           '/embed — embed (staff)',
           '/clear — supprimer des messages (staff)',
           '/close — fermer un ticket MP (staff)',
-          '/ticketpanel — envoyer le panneau de tickets (staff)',
+          '/ticketpanel — envoyer le panneau de tickets MP (staff)',
+          '/ticket — panneau de tickets Atlas Studio (staff)',
+          '/autorole — rôle automatique des nouveaux membres',
           '/ticketinfo — infos du ticket actuel',
           '/backupls — installer Route 68 (propriétaire)',
           '/backuptemp — créer les salons de stockage GTA RP (admin)',
