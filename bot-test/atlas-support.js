@@ -2,8 +2,8 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, EmbedBuilder, But
 
 const PANEL_CHANNEL_ID = '1570930108339060898';
 const SUPPORT_ROLE_ID = '1570889712179224658';
-const AUTO_MARK = /(?:^|\\n)\\[ATLAS_AUTOROLE:(\\d{17,20})\\]/;
-const TICKET_MARK = /^ATLAS_TICKET:(\\d{17,20})$/;
+const AUTO_MARK = /(?:^|\n)\[ATLAS_AUTOROLE:(\d{17,20})\]/;
+const TICKET_MARK = /^ATLAS_TICKET:(\d{17,20})$/;
 
 const commands = [
   new SlashCommandBuilder().setName('autorole').setDescription('Configure le rôle donné automatiquement aux nouveaux membres')
@@ -36,14 +36,14 @@ async function updateAutorole(guild, roleId) {
     throw new Error('Le bot doit pouvoir gérer un salon textuel pour conserver le réglage.');
   const fresh = await guild.channels.fetch(channel.id);
   const cleaned = (fresh.topic || '').replace(AUTO_MARK, '').trim();
-  const topic = [cleaned, roleId ? '[ATLAS_AUTOROLE:' + roleId + ']' : ''].filter(Boolean).join('\\n');
+  const topic = [cleaned, roleId ? '[ATLAS_AUTOROLE:' + roleId + ']' : ''].filter(Boolean).join('\n');
   if (topic.length > 1024) throw new Error('Description du salon trop longue.');
   await fresh.setTopic(topic, 'Configuration autorole Atlas Studio');
 }
 function panel() {
   return {
     embeds: [new EmbedBuilder().setColor(0x5865F2).setTitle('Créer un ticket')
-      .setDescription('Vous avez une question ou besoin d’assistance ? Ouvrez un ticket en expliquant clairement votre demande. Un membre de notre équipe prendra en charge votre requête et vous accompagnera jusqu’à sa résolution.\\n\\nAfin d’assurer un traitement rapide et efficace, veillez à inclure tous les détails nécessaires dans votre message.')
+      .setDescription('Vous avez une question ou besoin d’assistance ? Ouvrez un ticket en expliquant clairement votre demande. Un membre de notre équipe prendra en charge votre requête et vous accompagnera jusqu’à sa résolution.\n\nAfin d’assurer un traitement rapide et efficace, veillez à inclure tous les détails nécessaires dans votre message.')
       .setFooter({ text: 'Atlas Studio • Support' })],
     components: [new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('atlas_ticket_open').setLabel('Créer un ticket').setEmoji('🎫').setStyle(ButtonStyle.Primary))]
@@ -110,7 +110,7 @@ async function handle(interaction) {
       reason: 'Ticket Atlas Studio ouvert par ' + interaction.user.username
     });
     const embed = new EmbedBuilder().setColor(0x5865F2).setTitle('Bienvenue sur le support Atlas Studio')
-      .setDescription('Bonjour et bienvenue,\\n\\nMerci d’avoir contacté le support Atlas Studio.\\nDécrivez votre problème puis attendez de recevoir une réponse du support dans les plus brefs délais.')
+      .setDescription('Bonjour et bienvenue,\n\nMerci d’avoir contacté le support Atlas Studio.\nDécrivez votre problème puis attendez de recevoir une réponse du support dans les plus brefs délais.')
       .setFooter({ text: 'Atlas Studio • Ticket' }).setTimestamp();
     try {
       await channel.send({
