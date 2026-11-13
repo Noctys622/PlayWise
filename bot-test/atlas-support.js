@@ -75,12 +75,16 @@ async function handle(interaction) {
   if (interaction.isChatInputCommand() && interaction.commandName === 'ticket') {
     if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild))
       return interaction.reply({ content: '❌ Permission Gérer le serveur requise.', ephemeral: true });
-    const channel = await interaction.guild.channels.fetch(PANEL_CHANNEL_ID).catch(() => null);
+    const channel = interaction.channel;
     if (!channel || channel.type !== ChannelType.GuildText)
-      return interaction.reply({ content: '❌ Salon de panel introuvable sur ce serveur.', ephemeral: true });
+      return interaction.reply({ content: '❌ Utilise /ticket dans un salon textuel du serveur.', ephemeral: true });
+    const botMember = await interaction.guild.members.fetchMe();
+    const permissions = channel.permissionsFor(botMember);
+    if (!permissions?.has(PermissionFlagsBits.SendMessages) || !permissions?.has(PermissionFlagsBits.EmbedLinks))
+      return interaction.reply({ content: '❌ Le bot doit pouvoir envoyer des messages et intégrer des liens dans ce salon.', ephemeral: true });
     await interaction.deferReply({ ephemeral: true });
     await channel.send(panel());
-    return interaction.editReply({ content: '✅ Panel Atlas Studio publié dans <#' + PANEL_CHANNEL_ID + '>.' });
+    return interaction.editReply({ content: '✅ Panel Atlas Studio publié dans ' + channel.toString() + '.' });
   }
   if (interaction.isButton() && interaction.customId === 'atlas_ticket_open') {
     if (!interaction.inGuild()) return interaction.reply({ content: '❌ Utilise ce bouton sur le serveur.', ephemeral: true });
@@ -89,7 +93,7 @@ async function handle(interaction) {
     await guild.channels.fetch();
     const existing = guild.channels.cache.find(c => c.type === ChannelType.GuildText && ticketOwner(c) === interaction.user.id);
     if (existing) return interaction.editReply({ content: '🎫 Tu as déjà un ticket ouvert : ' + existing.toString() });
-    const source = await guild.channels.fetch(PANEL_CHANNEL_ID).catch(() => interaction.channel);
+    const source = interaction.channel;
     const support = await guild.roles.fetch(SUPPORT_ROLE_ID).catch(() => null);
     const me = await guild.members.fetchMe();
     if (!me.permissions.has(PermissionFlagsBits.ManageChannels))
