@@ -1,6 +1,7 @@
 const http = require('http');
 const lsBackup = require('./ls-backup');
 const tempBackup = require('./temp-backup');
+const uploadBackup = require('./upload-backup');
 const reviews = require('./reviews');
 const illegalBackup = require('./illegal-backup');
 const lsFeatures = require('./ls-features');
@@ -488,6 +489,7 @@ const commands = [
   reviews.command,
   lsBackup.command,
   tempBackup.command,
+  uploadBackup.command,
   illegalBackup.command,
   ...lsFeatures.commands,
   new SlashCommandBuilder().setName('setpdp').setDescription('Change la photo du bot sur ce serveur').setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
@@ -614,6 +616,7 @@ client.on('guildCreate', async guild => {
 async function handleInteraction(interaction) {
   try {
     if (await tempBackup.handle(interaction)) return;
+    if (await uploadBackup.handle(interaction)) return;
     if (await reviews.handle(interaction)) return;
     if (await illegalBackup.handle(interaction)) return;
     if (interaction.isChatInputCommand() && ['setpdp', 'resetpdp'].includes(interaction.commandName)) {
