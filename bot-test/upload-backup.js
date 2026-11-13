@@ -8,6 +8,17 @@ const TEXT = ChannelType.GuildText;
 const VOICE = ChannelType.GuildVoice;
 const t = (name, privateChannel = false, managerOnly = false) => ({name, type: TEXT, privateChannel, managerOnly});
 const v = (name, privateChannel = false) => ({name, type: VOICE, privateChannel});
+const ROLE_SPECS = [
+  {name: 'Addveo', color: 0x5865F2},
+  {name: 'Director', color: 0xF5A142},
+  {name: 'Head of Content', color: 0xE58C53},
+  {name: 'Developer', color: 0xE6A14A},
+  {name: 'Staff Manager', color: 0xE6A14A},
+  {name: 'Customer Support', color: 0xE6A14A},
+  {name: 'Customers', color: 0xAAB1BD},
+  {name: 'Visitors', color: 0xB8BAC5}
+];
+// Roles are cosmetic, with no elevated permissions.
 const GROUPS = [
   {name: 'Staff', privateCategory: true, channels: [
     t('📢・announcements', true), t('🧩・infos', true),
@@ -41,7 +52,7 @@ const GROUPS = [
 
 const command = new SlashCommandBuilder()
   .setName('backupload')
-  .setDescription('Installe les catégories et salons Addveo des captures')
+  .setDescription('Installe les rôles, catégories et salons Addveo')
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
 
 const running = new Set();
@@ -52,8 +63,8 @@ function overwrites(guild, privateChannel, managerOnly = false) {
     if (role.id === guild.id || role.managed) return false;
     const name = role.name.toLowerCase();
     return managerOnly
-      ? /manager|direction|responsable|administrateur|admin|owner|fondateur/.test(name)
-      : /support|staff|moderat|manager|direction|responsable|administrateur|admin|owner|fondateur|developp|dev/.test(name);
+      ? /^(director|staff manager)$|manager|direction|responsable|administrateur|admin|owner|fondateur/.test(name)
+      : /^(director|head of content|developer|staff manager|customer support)$|support|staff|moderat|manager|direction|responsable|administrateur|admin|owner|fondateur|developp/.test(name);
   });
   return [
     {id: guild.id, deny: [PermissionFlagsBits.ViewChannel]},
@@ -78,7 +89,7 @@ async function handle(interaction) {
     );
     const count = GROUPS.reduce((total, group) => total + group.channels.length, 0);
     await interaction.reply({
-      content: '📦 Installer **' + GROUPS.length + ' catégories** et jusqu’à **' + count +
+      content: '📦 Installer jusqu’à **' + ROLE_SPECS.length + ' rôles**, **' + GROUPS.length + ' catégories** et **' + count +
         ' salons** sur **' + interaction.guild.name + '** ?\n' +
         'Aucun salon ni rôle existant ne sera supprimé. Les salons privés seront réservés aux rôles staff/manager reconnus et aux administrateurs. Vérifie les permissions après installation.',
       components: [row],
@@ -103,15 +114,33 @@ async function handle(interaction) {
   }
 
   running.add(interaction.guildId);
-  await interaction.update({content: '⏳ Création des catégories et salons en cours…', components: []});
-  let categories = 0, channels = 0, skipped = 0;
+  await interaction.update({content: '⏳ Création des rôles, catégories et salons en cours…', components: []});
+  let rolesCreated = 0, rolesExisting = 0, categories = 0, channels = 0, skipped = 0;
   try {
     const guild = interaction.guild;
     const bot = await guild.members.fetchMe();
-    if (!bot.permissions.has(PermissionFlagsBits.ManageChannels))
-      throw new Error('Le bot doit posséder la permission Gérer les salons.');
+    if (!bot.permissions.has(PermissionFlagsBits.ManageChannels) || !bot.permissions.has(PermissionFlagsBits.ManageRoles))
+      throw new Error('Le bot doit posséder les permissions Gérer les salons et Gérer les rôles.');
     await guild.channels.fetch();
     await guild.roles.fetch();
+
+    // Create from lowest to highest for the intended display hierarchy.
+    // Existing roles retain their permissions and positions.
+    for (const spec of [...ROLE_SPECS].reverse()) {
+      if (guild.roles.cache.some(role => role.name.toLowerCase() === spec.name.toLowerCase())) {
+        rolesExisting++;
+        continue;
+      }
+      await guild.roles.create({
+        name: spec.name,
+        color: spec.color,
+        hoist: true,
+        mentionable: false,
+        permissions: 0n,
+        reason: 'Backup Addveo /backupload'
+      });
+      rolesCreated++;
+    }
 
     for (const group of GROUPS) {
       let category = guild.channels.cache.find(c => c.type === ChannelType.GuildCategory && c.name === group.name);
@@ -139,12 +168,13 @@ async function handle(interaction) {
         channels++;
       }
     }
-    await interaction.editReply('✅ Installation terminée : **' + categories +
-      ' catégories** et **' + channels + ' salons** créés (' + skipped +
-      ' déjà présents). Aucun élément existant supprimé. Vérifie les accès des rôles staff/manager.');
+    await interaction.editReply('✅ Installation terminée : **' + rolesCreated + ' rôles**, **' +
+      categories + ' catégories** et **' + channels + ' salons** créés (' + rolesExisting +
+      ' rôles et ' + skipped + ' salons déjà présents). Aucun élément existant supprimé. ' +
+      'Les rôles ne sont pas attribués automatiquement aux membres. Vérifie la hiérarchie et les permissions des salons existants.');
   } catch (error) {
     console.error('[BACKUPLOAD]', error);
-    await interaction.editReply('⚠️ Installation interrompue après ' + categories +
+    await interaction.editReply('⚠️ Installation interrompue après ' + rolesCreated + ' rôles, ' + categories +
       ' catégories et ' + channels + ' salons : ' + String(error.message).slice(0, 250) +
       '. Tu peux relancer /backupload : les salons existants seront conservés.').catch(() => {});
   } finally {
