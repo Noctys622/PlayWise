@@ -4,7 +4,7 @@ const {
   ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder
 } = require('discord.js');
 
-// Modèle basé sur les captures fournies. Les séparateurs sont des salons textuels.
+// Modèle basé sur les captures fournies. Les séparateurs sont des salons vocaux.
 const TEXT = ChannelType.GuildText;
 const VOICE = ChannelType.GuildVoice;
 const t = (name, privateChannel = false, managerOnly = false) => ({name, type: TEXT, privateChannel, managerOnly});
@@ -22,21 +22,31 @@ const ROLE_SPECS = [
 // Roles are cosmetic, with no elevated permissions.
 const GROUPS = [
   {name: 'Staff', privateCategory: true, channels: [
-    t('📢・announcements', true), t('🧩・infos', true),
+    t('📢・announcements', true),
+    t('🧩・infos', true),
+    t('💬・discussion-support', true),
+    t('💬・discussion-manager', true, true),
+    t('📁・report-bug', true),
+    t('📁・resources', true),
+    t('📁・github', true),
+    t('🛡️・vocal-anticheat', true),
+    t('⚙️・ticket-notif', true),
+    // Séparateurs Discord : de vrais salons VOCAUX, pas des salons textuels.
     v('━━━━━━━━━━━━', true),
-    t('💬・discussion-support', true), t('💬・discussion-manager', true, true),
+    v('🔊・Bureau 1', true),
+    v('🔊・Bureau 2', true),
     v('━━━━━━━━━━━━━', true),
-    t('📁・report-bug', true), t('📁・resources', true), t('📁・github', true),
+    v('🔊・Admin 1', true),
+    v('🔊・Admin 2', true),
     v('━━━━━━━━━━━━━━', true),
-    t('🛡️・vocal-anticheat', true), t('⚙️・ticket-notif', true), v('🐍・report-bug', true),
-    v('━━━━━━━━━━━━━━━', true),
-    v('🔊・Bureau 1', true), v('🔊・Bureau 2', true),
-    v('━━━━━━━━━━━━━━━━', true),
-    v('🔊・Admin 1', true), v('🔊・Admin 2', true)
+    v('🐍・report-bug', true)
   ]},
   {name: 'Workspace', privateCategory: true, channels: [
-    v('━━━━━━━━━━━━', true), v('🔨・Workspace 1', true), v('🔨・Workspace 2', true),
-    v('🔨・Workspace 3', true), v('⏳・Waiting For Moove', true)
+    v('━━━━━━━━━━━━', true),
+    v('🔨・Workspace 1', true),
+    v('🔨・Workspace 2', true),
+    v('🔨・Workspace 3', true),
+    v('⏳・Waiting For Moove', true)
   ]},
   {name: 'Addveo Hub', channels: [
     t('📁・nos-offres'), t('📁・documentation')
