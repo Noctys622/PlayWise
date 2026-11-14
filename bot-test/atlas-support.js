@@ -137,7 +137,7 @@ async function handle(interaction) {
       reason: 'Ticket Atlas Studio ouvert par ' + interaction.user.username
     });
     const embed = new EmbedBuilder().setColor(0x5865F2).setTitle('Bienvenue sur le support Atlas Studio')
-      .setDescription('**Service : ' + service.label + '**\\n\\nBonjour et bienvenue,\\n\\nMerci d’avoir contacté le support Atlas Studio.\\nDécrivez votre problème puis attendez de recevoir une réponse du support dans les plus brefs délais.')
+      .setDescription('**Service : ' + service.label + '**\n\nBonjour et bienvenue,\n\nMerci d’avoir contacté le support Atlas Studio.\nDécrivez votre problème puis attendez de recevoir une réponse du support dans les plus brefs délais.')
       .setFooter({ text: 'Atlas Studio • Ticket' }).setTimestamp();
     try {
       await channel.send({
