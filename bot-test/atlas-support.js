@@ -2,6 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, EmbedBuilder, But
 
 const PANEL_CHANNEL_ID = '1570930108339060898';
 const SUPPORT_ROLE_ID = '1570889712179224658';
+const TRANSCRIPT_CHANNEL_ID = '1570889758987657306';
 const AUTO_MARK = /(?:^|\n)\[ATLAS_AUTOROLE:(\d{17,20})\]/;
 const SERVICES = {
   base: { label: 'Service Base FiveM V1', category: '1570979005178445824', emoji: '🎮' },
@@ -54,6 +55,49 @@ function panel() {
     components: [new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('atlas_ticket_open').setLabel('Créer un ticket').setEmoji('🎫').setStyle(ButtonStyle.Primary))]
   };
+}
+async function sendTicketTranscript(channel, ownerId, closedBy) {
+  const logChannel = await channel.guild.channels.fetch(TRANSCRIPT_CHANNEL_ID);
+  if (!logChannel || logChannel.type !== ChannelType.GuildText)
+    throw new Error('Salon de transcripts introuvable.');
+  const bot = await channel.guild.members.fetchMe();
+  const perms = logChannel.permissionsFor(bot);
+  if (!perms?.has(PermissionFlagsBits.SendMessages) || !perms.has(PermissionFlagsBits.AttachFiles))
+    throw new Error('Permissions Envoyer des messages et Joindre des fichiers requises dans le salon de transcripts.');
+  let before;
+  const messages = [];
+  do {
+    const batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
+    if (!batch.size) break;
+    messages.push(...batch.values());
+    before = batch.last().id;
+    if (batch.size < 100) break;
+  } while (messages.length < 10000);
+  messages.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
+  const lines = messages.map(m => {
+    const date = new Date(m.createdTimestamp).toLocaleString('fr-BE', { timeZone: 'Europe/Brussels' });
+    const embeds = m.embeds.map(e => [e.title, e.description, ...(e.fields || []).map(f => f.name + ': ' + f.value)].filter(Boolean).join(' | ')).filter(Boolean);
+    const attachments = [...m.attachments.values()].map(a => a.url);
+    return '[' + date + '] ' + m.author.username + ' (' + m.author.id + '): ' +
+      [m.content, ...embeds, ...attachments].filter(Boolean).join(' | ');
+  });
+  const transcript = Buffer.from(lines.join('\n') || 'Aucun message.', 'utf8');
+  if (transcript.length > 7 * 1024 * 1024)
+    throw new Error('Transcript trop volumineux pour être envoyé en une seule pièce jointe.');
+  const service = Object.values(SERVICES).find(v => v.category === channel.parentId);
+  const embed = new EmbedBuilder().setColor(0x5865F2).setTitle('📁 Transcript de ticket • Atlas Studio')
+    .addFields(
+      { name: 'Membre', value: '<@' + ownerId + '>', inline: true },
+      { name: 'Fermé par', value: '<@' + closedBy.id + '>', inline: true },
+      { name: 'Service', value: service?.label || 'Non identifié', inline: false },
+      { name: 'Salon', value: channel.name, inline: true },
+      { name: 'Messages', value: String(messages.length), inline: true }
+    ).setTimestamp();
+  await logChannel.send({
+    embeds: [embed],
+    files: [{ attachment: transcript, name: 'atlas-transcript-' + channel.id + '.txt' }],
+    allowedMentions: { parse: [] }
+  });
 }
 function ticketOwner(channel) {
   return channel?.topic?.match(TICKET_MARK)?.[1] || null;
@@ -159,7 +203,14 @@ async function handle(interaction) {
       interaction.member?.roles?.cache?.has(SUPPORT_ROLE_ID);
     if (interaction.user.id !== owner && !staff)
       return interaction.reply({ content: '❌ Seul le créateur du ticket ou le support peut le fermer.', ephemeral: true });
-    await interaction.reply({ content: '🔒 Ticket fermé par <@' + interaction.user.id + '>.', allowedMentions: { users: [interaction.user.id] } });
+    await interaction.deferReply({ ephemeral: true });
+    try {
+      await sendTicketTranscript(interaction.channel, owner, interaction.user);
+    } catch (error) {
+      console.error('[ATLAS TRANSCRIPT]', error);
+      return interaction.editReply({ content: '❌ Impossible de sauvegarder le transcript : ' + error.message + ' Le ticket reste ouvert.' });
+    }
+    await interaction.editReply({ content: '✅ Transcript enregistré. Fermeture du ticket…' });
     await interaction.channel.delete('Ticket fermé par ' + interaction.user.username);
     return true;
   }
