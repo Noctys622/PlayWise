@@ -619,7 +619,8 @@ client.on('guildCreate', async guild => {
 async function handleInteraction(interaction) {
   try {
     if ((interaction.isChatInputCommand() && ['ticket', 'autorole'].includes(interaction.commandName)) ||
-        (interaction.isButton() && ['atlas_ticket_open', 'atlas_ticket_close'].includes(interaction.customId))) {
+        (interaction.isButton() && ['atlas_ticket_open', 'atlas_ticket_close'].includes(interaction.customId)) ||
+        (interaction.isStringSelectMenu() && interaction.customId === 'atlas_ticket_service')) {
       await atlas.handle(interaction);
       return;
     }
