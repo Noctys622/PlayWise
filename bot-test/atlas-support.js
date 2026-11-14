@@ -1,8 +1,14 @@
-const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
 
 const PANEL_CHANNEL_ID = '1570930108339060898';
 const SUPPORT_ROLE_ID = '1570889712179224658';
 const AUTO_MARK = /(?:^|\n)\[ATLAS_AUTOROLE:(\d{17,20})\]/;
+const SERVICES = {
+  base: { label: 'Service Base FiveM V1', category: '1570979005178445824', emoji: '🎮' },
+  bot: { label: 'Service Bot Support Discord', category: '1570979150322475119', emoji: '🤖' },
+  video: { label: 'Service Vidéo TikTok', category: '1570979092545802260', emoji: '🎬' },
+  graphisme: { label: 'Service Graphisme', category: '1570930108339060898', emoji: '🎨' }
+};
 const TICKET_MARK = /^ATLAS_TICKET:(\d{17,20})$/;
 
 const commands = [
@@ -87,15 +93,30 @@ async function handle(interaction) {
     return interaction.editReply({ content: '✅ Panel Atlas Studio publié dans ' + channel.toString() + '.' });
   }
   if (interaction.isButton() && interaction.customId === 'atlas_ticket_open') {
+    return interaction.reply({
+      content: 'Sélectionne le service concerné par ta demande :',
+      ephemeral: true,
+      components: [new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder().setCustomId('atlas_ticket_service')
+          .setPlaceholder('Choisir un service')
+          .addOptions(Object.entries(SERVICES).map(([value, service]) => ({
+            label: service.label, value, emoji: service.emoji
+          })))
+      )]
+    });
+  }
+  if (interaction.isStringSelectMenu() && interaction.customId === 'atlas_ticket_service') {
+    const service = SERVICES[interaction.values[0]];
+    if (!service) return interaction.reply({ content: '❌ Service invalide.', ephemeral: true });
     if (!interaction.inGuild()) return interaction.reply({ content: '❌ Utilise ce bouton sur le serveur.', ephemeral: true });
     await interaction.deferReply({ ephemeral: true });
     const guild = interaction.guild;
     await guild.channels.fetch();
     const existing = guild.channels.cache.find(c => c.type === ChannelType.GuildText && ticketOwner(c) === interaction.user.id);
     if (existing) return interaction.editReply({ content: '🎫 Tu as déjà un ticket ouvert : ' + existing.toString() });
-    const category = await guild.channels.fetch(PANEL_CHANNEL_ID).catch(() => null);
+    const category = await guild.channels.fetch(service.category).catch(() => null);
     if (!category || category.type !== ChannelType.GuildCategory)
-      return interaction.editReply({ content: '❌ Catégorie de tickets introuvable : `'+ '1570930108339060898' +'`. Vérifie que cet ID correspond bien à une catégorie de ce serveur.' });
+      return interaction.editReply({ content: '❌ Catégorie de tickets introuvable : `' + service.category + '`. Vérifie les permissions du bot et l’ID.' });
     const support = await guild.roles.fetch(SUPPORT_ROLE_ID).catch(() => null);
     const me = await guild.members.fetchMe();
     if (!me.permissions.has(PermissionFlagsBits.ManageChannels))
@@ -116,7 +137,7 @@ async function handle(interaction) {
       reason: 'Ticket Atlas Studio ouvert par ' + interaction.user.username
     });
     const embed = new EmbedBuilder().setColor(0x5865F2).setTitle('Bienvenue sur le support Atlas Studio')
-      .setDescription('Bonjour et bienvenue,\n\nMerci d’avoir contacté le support Atlas Studio.\nDécrivez votre problème puis attendez de recevoir une réponse du support dans les plus brefs délais.')
+      .setDescription('**Service : ' + service.label + '**\\n\\nBonjour et bienvenue,\\n\\nMerci d’avoir contacté le support Atlas Studio.\\nDécrivez votre problème puis attendez de recevoir une réponse du support dans les plus brefs délais.')
       .setFooter({ text: 'Atlas Studio • Ticket' }).setTimestamp();
     try {
       await channel.send({
