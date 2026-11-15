@@ -517,9 +517,12 @@ const commands = [
     .addStringOption(o => o.setName('message').setDescription('Message').setRequired(true)),
   new SlashCommandBuilder()
     .setName('embed')
-    .setDescription('Envoie un embed')
-    .addStringOption(o => o.setName('titre').setDescription('Titre').setRequired(true))
-    .addStringOption(o => o.setName('message').setDescription('Message').setRequired(true)),
+    .setDescription('Envoie un embed personnalisé dans le salon choisi')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .addStringOption(o => o.setName('titre').setDescription("Titre de l'embed").setMaxLength(256).setRequired(true))
+    .addStringOption(o => o.setName('description').setDescription("Description de l'embed").setMaxLength(4000).setRequired(true))
+    .addChannelOption(o => o.setName('salon').setDescription("Salon où envoyer l'embed").addChannelTypes(ChannelType.GuildText).setRequired(true))
+    .addAttachmentOption(o => o.setName('image').setDescription('Image facultative (PNG, JPG, WEBP ou GIF)').setRequired(false)),
   new SlashCommandBuilder()
     .setName('clear')
     .setDescription('Supprime des messages')
@@ -947,16 +950,28 @@ async function handleInteraction(interaction) {
     }
 
     if (interaction.commandName === 'embed') {
-      if (!interaction.memberPermissions.has(PermissionFlagsBits.ManageMessages)) {
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages)) {
         return interaction.reply({ content: '❌ Permission Gérer les messages requise.', ephemeral: true });
+      }
+      const salon = interaction.options.getChannel('salon', true);
+      const image = interaction.options.getAttachment('image');
+      const permissions = salon.permissionsFor(interaction.guild.members.me || interaction.client.user);
+      if (!permissions?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) {
+        return interaction.reply({ content: "❌ Le bot ne peut pas envoyer d'embed dans ce salon. Vérifie ses permissions.", ephemeral: true });
+      }
+      if (image && (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(image.contentType) || image.size > 8 * 1024 * 1024)) {
+        return interaction.reply({ content: '❌ Image PNG, JPG, WEBP ou GIF de 8 Mo maximum requise.', ephemeral: true });
       }
       const embed = new EmbedBuilder()
         .setColor(0x5865F2)
         .setTitle(interaction.options.getString('titre', true))
-        .setDescription(interaction.options.getString('message', true))
+        .setDescription(interaction.options.getString('description', true))
         .setFooter({ text: 'Envoyé par ' + interaction.user.username })
         .setTimestamp();
-      return interaction.reply({ embeds: [embed] });
+      if (image) embed.setImage(image.url);
+      await interaction.deferReply({ ephemeral: true });
+      await salon.send({ embeds: [embed], allowedMentions: { parse: [] } });
+      return interaction.editReply({ content: '✅ Embed envoyé dans ' + salon.toString() + '.' });
     }
 
     if (interaction.commandName === 'clear') {
