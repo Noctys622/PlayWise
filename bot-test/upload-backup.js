@@ -1,3 +1,4 @@
+const graphismeBackup = require('./graphisme-backup');
 const {
   SlashCommandBuilder, PermissionFlagsBits, ChannelType,
   ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags,
@@ -63,7 +64,8 @@ const GROUPS = [
 
 const command = new SlashCommandBuilder()
   .setName('backupload')
-  .setDescription('Installe les rôles, catégories et salons Addveo')
+  .setDescription('Installe une structure de serveur Discord')
+  .addStringOption(o => o.setName('modele').setDescription('Structure à installer').setRequired(false).addChoices({name:'Graphisme (sans suppression)',value:'graphisme'},{name:'Addveo (réinitialisation complète)',value:'addveo'}))
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
 
 const running = new Set();
@@ -122,6 +124,7 @@ async function handle(interaction) {
   const isButton = interaction.isButton() && interaction.customId.startsWith('backupload:');
   const isModal = interaction.isModalSubmit() && interaction.customId.startsWith('backupload:execute:');
   if (!isCommand && !isButton && !isModal) return false;
+  if (isCommand && interaction.options.getString('modele') === 'graphisme') return graphismeBackup.handle(interaction);
 
   if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
     await interaction.reply({content: '❌ Réservé aux administrateurs du serveur.', flags: MessageFlags.Ephemeral});
