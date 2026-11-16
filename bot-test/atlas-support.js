@@ -5,7 +5,6 @@ const SUPPORT_ROLE_ID = '1570889712179224658';
 const TRANSCRIPT_CHANNEL_ID = '1570889758987657306';
 const AUTO_MARK = /(?:^|\n)\[ATLAS_AUTOROLE:(\d{17,20})\]/;
 const SERVICES = {
-  base: { label: 'Service Base FiveM V1', category: '1570979005178445824', emoji: '🎮' },
   bot: { label: 'Service Bot Support Discord', category: '1570979150322475119', emoji: '🤖' },
   video: { label: 'Service Vidéo TikTok', category: '1570979092545802260', emoji: '🎬' },
   graphisme: { label: 'Service Graphisme', category: '1570930108339060898', emoji: '🎨' }
